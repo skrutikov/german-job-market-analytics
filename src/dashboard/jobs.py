@@ -1,5 +1,6 @@
 """ """
 
+from datetime import datetime
 import pandas as pd
 import plotly.express as px
 from plotly.graph_objects import Figure
@@ -39,6 +40,13 @@ def _format_location(location: dict) -> str:
     ]
 
     return ", ".join(str(part) for part in parts if part)
+
+
+def _format_datetime(value: str | None) -> str:
+    if not value:
+        return "Unknown"
+
+    return datetime.fromisoformat(value).strftime("%d %b %Y")
 
 
 # endregion
@@ -114,6 +122,24 @@ def create_job_details_modal_content(job: dict) -> list:
                 className="job-description",
             )
         )
+
+    content.append(
+        html.Div(
+            [
+                html.H3("Freshness"),
+                html.P(
+                    f"First published: "
+                    f"{_format_datetime(job.get('first_publication_date'))}"
+                ),
+                html.P(f"Last updated: " f"{_format_datetime(job.get('modified_at'))}"),
+                html.P(
+                    f"Republished without changes since last update: "
+                    f"{job.get("unchanged_republish_count", 0)}"
+                ),
+            ],
+            className="job-freshness",
+        )
+    )
 
     if job.get("external_url"):
         content.append(

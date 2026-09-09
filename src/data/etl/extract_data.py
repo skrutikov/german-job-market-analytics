@@ -1,6 +1,7 @@
 """E/ETL: Extract raw job data from the Arbeitsagentur job-search API."""
 
 import logging
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -13,13 +14,23 @@ from src.config.settings import (
     JOB_DETAILS_FILE_NAME,
     API_REQUEST_PAGE_SIZE,
     DEFAULT_JOB_SEARCH_KEYWORDS,
-    NUM_API_REQUESTS_PER_SEARCH,
     RAW_DATA_DIRECTORY,
 )
 from src.data.arbeitsagentur_client import ArbeitsagenturClient
 from src.data.utils.json_utils import save_json
+from src.data.job_freshness import get_job_states
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_modified_at(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _search_jobs(
@@ -27,7 +38,6 @@ def _search_jobs(
     *,
     keywords: tuple[str, ...],
     first_page: int,
-    number_of_pages: int,
     jobs_per_page: int,
     output_directory: Path,
 ) -> list[dict[str, Any]]:
@@ -39,30 +49,64 @@ def _search_jobs(
             output_directory / "search-results" / keyword.lower().replace(" ", "-")
         )
 
-        for page_number in range(
-            first_page,
-            first_page + number_of_pages,
-        ):
-            logger.info(
-                "Searching for %r, page %d, jobs per page %d",
-                keyword,
-                page_number,
-                jobs_per_page,
+        try:
+            first_result = client.search_jobs(
+                keyword=keyword,
+                page_number=first_page,
+                jobs_per_page=jobs_per_page,
             )
+        except requests.RequestException:
+            logger.exception(
+                "Failed to retrieve first page for %r",
+                keyword,
+            )
+            continue
 
-            try:
-                search_result = client.search_jobs(
-                    keyword=keyword,
-                    page_number=page_number,
-                    jobs_per_page=jobs_per_page,
-                )
-            except requests.RequestException:
-                logger.exception(
-                    "Failed to retrieve page %d for %r",
-                    page_number,
-                    keyword,
-                )
-                continue
+        max_results = first_result.get("maxErgebnisse", 0)
+        page_size = first_result.get("size", jobs_per_page)
+
+        if not isinstance(max_results, int) or not isinstance(page_size, int):
+            logger.warning(
+                "Invalid pagination information for %r",
+                keyword,
+            )
+            continue
+
+        if page_size <= 0:
+            logger.warning(
+                "Invalid page size for %r: %r",
+                keyword,
+                page_size,
+            )
+            continue
+
+        total_pages = math.ceil(max_results / page_size)
+
+        logger.info(
+            "%r: %d results across %d pages (page size %d)",
+            keyword,
+            max_results,
+            total_pages,
+            page_size,
+        )
+
+        for page_number in range(first_page, first_page + total_pages):
+            if page_number == first_page:
+                search_result = first_result
+            else:
+                try:
+                    search_result = client.search_jobs(
+                        keyword=keyword,
+                        page_number=page_number,
+                        jobs_per_page=jobs_per_page,
+                    )
+                except requests.RequestException:
+                    logger.exception(
+                        "Failed to retrieve page %d for %r",
+                        page_number,
+                        keyword,
+                    )
+                    continue
 
             save_json(
                 search_result,
@@ -144,8 +188,48 @@ def _retrieve_job_details(
     return job_details, failures
 
 
-def extract_data(keywords: tuple[str, ...]) -> Path:
-    """Extract raw job data and return the path to the job-details.json file."""
+def _select_jobs_requiring_details(
+    job_summaries: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    job_states = get_job_states()
+
+    jobs_requiring_details: list[dict[str, Any]] = []
+
+    for job_summary in job_summaries:
+        reference_number = job_summary["referenznummer"]
+
+        stored_state = job_states.get(reference_number)
+
+        # New job.
+        if stored_state is None:
+            jobs_requiring_details.append(job_summary)
+            continue
+
+        stored_modified_at, _is_active = stored_state
+
+        source_modified_at = _parse_modified_at(job_summary.get("aenderungsdatum"))
+
+        # If either timestamp is missing, we cannot safely say
+        # that the job is unchanged.
+        if source_modified_at is None or stored_modified_at is None:
+            jobs_requiring_details.append(job_summary)
+            continue
+
+        # Existing job changed at BA.
+        if source_modified_at != stored_modified_at:
+            jobs_requiring_details.append(job_summary)
+
+    logger.info(
+        "%d of %d jobs require detail retrieval",
+        len(jobs_requiring_details),
+        len(job_summaries),
+    )
+
+    return jobs_requiring_details
+
+
+def extract_data(keywords: tuple[str, ...]) -> tuple[Path, set[str]]:
+    """Extract raw job data and return the details path and seen references."""
     extraction_time = datetime.now(timezone.utc)
     output_directory = RAW_DATA_DIRECTORY / extraction_time.strftime(
         "%Y-%m-%dT%H-%M-%SZ"
@@ -159,19 +243,22 @@ def extract_data(keywords: tuple[str, ...]) -> Path:
         client,
         keywords=keywords,
         first_page=API_START_PAGE,
-        number_of_pages=NUM_API_REQUESTS_PER_SEARCH,
         jobs_per_page=API_REQUEST_PAGE_SIZE,
         output_directory=output_directory,
     )
+
+    seen_reference_numbers = {job["referenznummer"] for job in job_summaries}
 
     logger.info(
         "Retrieved %d unique search results",
         len(job_summaries),
     )
 
+    jobs_requiring_details = _select_jobs_requiring_details(job_summaries)
+
     job_details, failed_jobs = _retrieve_job_details(
         client,
-        job_summaries,
+        jobs_requiring_details,
     )
 
     save_json(job_details, details_output_path)
@@ -184,7 +271,7 @@ def extract_data(keywords: tuple[str, ...]) -> Path:
     )
     logger.info("Raw job details saved to %s", details_output_path)
 
-    return details_output_path
+    return details_output_path, seen_reference_numbers
 
 
 def main() -> None:

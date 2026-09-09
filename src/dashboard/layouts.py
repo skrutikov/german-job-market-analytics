@@ -75,7 +75,7 @@ def _create_find_jobs_page() -> html.Div:
                                     dcc.Input(
                                         id="location-input",
                                         type="text",
-                                        placeholder="City or remote",
+                                        placeholder="City",
                                     ),
                                 ],
                                 className="search-field",

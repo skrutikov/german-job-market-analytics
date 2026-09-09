@@ -16,6 +16,27 @@ services:
       timeout: 5s
       retries: 10
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.4
+    environment:
+      discovery.type: single-node  # just a single node (not a production Elasticsearch cluster)
+      xpack.security.enabled: "false"  # disable authentication/TLS for simplicity
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"  # JVM heap limited to 512 MB
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports: # the internal node-to-node port 9300 is not exposed because we're running a single node
+      - "127.0.0.1:9200:9200" # Elasticsearch's HTTP API
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fs http://localhost:9200/_cluster/health || exit 1"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -23,8 +44,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://job_market:job_market@postgres:5432/job_market
+      ELASTICSEARCH_URL: http://elasticsearch:9200
     ports:
       - "127.0.0.1:8000:8000"
     command:
@@ -56,13 +80,17 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
       pushgateway:
         condition: service_started
     environment:
       DATABASE_URL: postgresql+psycopg://job_market:job_market@postgres:5432/job_market
       PUSHGATEWAY_URL: http://pushgateway:9091
+      ELASTICSEARCH_URL: http://elasticsearch:9200
     volumes:
       - job-market-data:/app/data
+      - ./data/samples:/app/data/samples:ro
     command:
       ["python", "-m", "src.data.etl.etl"]
 
@@ -73,10 +101,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
       pushgateway:
         condition: service_started
     environment:
       DATABASE_URL: postgresql+psycopg://job_market:job_market@postgres:5432/job_market
+      ELASTICSEARCH_URL: http://elasticsearch:9200
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/simple_auth_passwords.json
       PUSHGATEWAY_URL: http://pushgateway:9091
@@ -130,6 +161,7 @@ services:
 
 volumes:
   postgres_data:
+  elasticsearch_data:
   job-market-data:
   prometheus_data:
   grafana_data:

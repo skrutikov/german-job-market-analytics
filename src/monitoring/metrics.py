@@ -78,6 +78,43 @@ _failed_geocoding_requests = Gauge(
 )
 
 
+_failed_geocoding_count = 0
+
+
+def reset_failed_geocoding() -> None:
+    global _failed_geocoding_count
+    _failed_geocoding_count = 0
+
+
+def record_failed_geocoding() -> None:
+    global _failed_geocoding_count
+    _failed_geocoding_count += 1
+
+
+def get_failed_geocoding_count() -> int:
+    return _failed_geocoding_count
+
+
+def push_etl_metrics(
+    runtime_seconds: float,
+    failed_geocoding_requests: int,
+) -> None:
+    """Publish metrics for a successfully completed ETL run."""
+
+    _etl_runtime_seconds.set(runtime_seconds)
+    _etl_last_success_unixtime.set_to_current_time()
+    _failed_geocoding_requests.set(failed_geocoding_requests)
+
+    try:
+        push_to_gateway(
+            PUSHGATEWAY_URL,
+            job="job-market-etl",
+            registry=_etl_registry,
+        )
+    except URLError:
+        logger.exception("Could not push ETL metrics to Pushgateway")
+
+
 def monitor_arbeitsagentur_request(operation: str):
     """Track the duration and outcome of an Arbeitsagentur API operation."""
 
@@ -156,27 +193,16 @@ def monitor_etl_run(function):
 
     @wraps(function)
     def wrapper(*args, **kwargs):
-        _failed_geocoding_requests.set(0)
+        reset_failed_geocoding()
         start_time = time.perf_counter()
 
         result = function(*args, **kwargs)
 
-        runtime_seconds = time.perf_counter() - start_time
+        push_etl_metrics(
+            runtime_seconds=time.perf_counter() - start_time,
+            failed_geocoding_requests=get_failed_geocoding_count(),
+        )
 
-        _etl_runtime_seconds.set(runtime_seconds)
-        _etl_last_success_unixtime.set_to_current_time()
-        try:
-            push_to_gateway(
-                PUSHGATEWAY_URL,
-                job="job-market-etl",
-                registry=_etl_registry,
-            )
-        except URLError:
-            logger.exception("Could not push ETL metrics to Pushgateway")
         return result
 
     return wrapper
-
-
-def record_failed_geocoding():
-    _failed_geocoding_requests.inc()

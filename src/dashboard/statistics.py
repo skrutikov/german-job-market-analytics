@@ -11,7 +11,7 @@ from src.config.settings import CATEGORY_COLORS, FASTAPI_URL
 # region Private helper functions
 
 
-def _get_statistics() -> tuple[dict, list, list, dict, list]:
+def _get_statistics() -> tuple[dict, list, list, dict, list, list]:
     overview = requests.get(
         f"{FASTAPI_URL}/statistics/overview",
         timeout=10,
@@ -44,12 +44,19 @@ def _get_statistics() -> tuple[dict, list, list, dict, list]:
     )
     categories.raise_for_status()
 
+    publication_trends = requests.get(
+        f"{FASTAPI_URL}/statistics/publication-trends",
+        timeout=10,
+    )
+    publication_trends.raise_for_status()
+
     return (
         overview.json(),
         companies.json(),
         locations.json(),
         home_office.json(),
         categories.json(),
+        publication_trends.json(),
     )
 
 
@@ -57,7 +64,9 @@ def _get_statistics() -> tuple[dict, list, list, dict, list]:
 
 
 def create_statistics_content() -> tuple[html.Div, list[dcc.Graph]]:
-    overview, companies, locations, home_office, categories = _get_statistics()
+    overview, companies, locations, home_office, categories, publication_trends = (
+        _get_statistics()
+    )
 
     overview_cards = html.Div(
         [
@@ -148,7 +157,54 @@ def create_statistics_content() -> tuple[html.Div, list[dcc.Graph]]:
         yaxis_title=None,
     )
 
+    publication_trends_df = pd.DataFrame(publication_trends)
+    publication_trends_figure = px.line(
+        publication_trends_df,
+        x="month",
+        y="job_count",
+        markers=True,
+        title="Jobs by first publication month",
+        labels={
+            "month": "First publication month",
+            "job_count": "Currently stored jobs",
+        },
+    )
+    publication_trends_figure.update_layout(
+        hovermode="x unified",
+    )
+    publication_trends_figure.update_xaxes(
+        tickformat="%b %Y",
+        rangeslider_visible=True,
+        rangeselector={
+            "buttons": [
+                {
+                    "count": 3,
+                    "label": "3m",
+                    "step": "month",
+                    "stepmode": "backward",
+                },
+                {
+                    "count": 6,
+                    "label": "6m",
+                    "step": "month",
+                    "stepmode": "backward",
+                },
+                {
+                    "count": 1,
+                    "label": "1y",
+                    "step": "year",
+                    "stepmode": "backward",
+                },
+                {
+                    "label": "All",
+                    "step": "all",
+                },
+            ]
+        },
+    )
+
     return overview_cards, [
+        dcc.Graph(figure=publication_trends_figure),
         dcc.Graph(figure=companies_figure),
         dcc.Graph(figure=locations_figure),
         dcc.Graph(figure=home_office_figure),

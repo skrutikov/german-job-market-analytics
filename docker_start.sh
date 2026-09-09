@@ -9,8 +9,9 @@ AIRFLOW_URL="http://127.0.0.1:8080"
 PROMETHEUS_URL="http://127.0.0.1:9090"
 ALERTMANAGER_URL="http://127.0.0.1:9093"
 GRAFANA_URL="http://127.0.0.1:3000"
+ELASTICSEARCH_URL="http://127.0.0.1:9200"
 
-docker compose up --build -d postgres backend frontend airflow prometheus pushgateway alertmanager grafana
+docker compose up --build -d postgres elasticsearch backend frontend airflow prometheus pushgateway alertmanager grafana
 
 wait_for_url() {
     url="$1"
@@ -59,6 +60,9 @@ wait_for_url "$ALERTMANAGER_URL" alertmanager
 
 echo "Waiting for Grafana..."
 wait_for_url "$GRAFANA_URL" grafana
+
+echo "Waiting for Elasticsearch..."
+wait_for_url "$GRAFANA_URL" elasticsearch
 
 AIRFLOW_PASSWORD_LINE=$(
     docker compose logs airflow 2>/dev/null \

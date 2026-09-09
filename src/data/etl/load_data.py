@@ -34,12 +34,22 @@ CREATE TABLE IF NOT EXISTS jobs (
     entry_date DATE,
     publication_date DATE,
     first_publication_date DATE,
-    modified_at TIMESTAMP,
     external_url TEXT,
     partner_name TEXT,
     partner_url TEXT,
     employer_customer_hash TEXT,
-    category TEXT NOT NULL DEFAULT 'Other'
+    category TEXT NOT NULL DEFAULT 'Other',
+    reappearance_count INTEGER NOT NULL DEFAULT 0,
+    modification_count INTEGER NOT NULL DEFAULT 0,
+    modified_at TIMESTAMP,
+    -- first_seen := first time our system confirmed the job existed
+    first_seen TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- last_seen := most recent time our system confirmed it existed
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- is_active := most recent existence state
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    -- unchanged_republish_count := how often the job was republished without changes since last update
+    unchanged_republish_count INTEGER NOT NULL DEFAULT 0
 );
 """)
 
@@ -58,6 +68,7 @@ CREATE TABLE IF NOT EXISTS job_locations (
     longitude DOUBLE PRECISION
 );
 """)
+
 
 CREATE_LOCATION_INDEX_SQL = text("""
 CREATE INDEX IF NOT EXISTS idx_job_locations_reference_number
@@ -86,12 +97,12 @@ INSERT INTO jobs (
     entry_date,
     publication_date,
     first_publication_date,
-    modified_at,
     external_url,
     partner_name,
     partner_url,
     employer_customer_hash,
-    category
+    category,
+    modified_at
 )
 VALUES (
     :reference_number,
@@ -113,12 +124,12 @@ VALUES (
     :entry_date,
     :publication_date,
     :first_publication_date,
-    :modified_at,
     :external_url,
     :partner_name,
     :partner_url,
     :employer_customer_hash,
-    :category
+    :category,
+    :modified_at
 )
 ON CONFLICT(reference_number) DO UPDATE SET
     title = excluded.title,
@@ -139,14 +150,41 @@ ON CONFLICT(reference_number) DO UPDATE SET
     entry_date = excluded.entry_date,
     publication_date = excluded.publication_date,
     first_publication_date = excluded.first_publication_date,
-    modified_at = excluded.modified_at,
     external_url = excluded.external_url,
     partner_name = excluded.partner_name,
     partner_url = excluded.partner_url,
     employer_customer_hash = excluded.employer_customer_hash,
-    category = excluded.category;
+    category = excluded.category,
+    -- modification_count = 0  →  never observed changing
+    -- modification_count > 0  →  has been modified
+    modification_count =
+        CASE
+            WHEN jobs.modified_at IS DISTINCT FROM excluded.modified_at
+                AND jobs.modified_at IS NOT NULL
+                AND excluded.modified_at IS NOT NULL
+            THEN jobs.modification_count + 1
+            ELSE jobs.modification_count
+        END,
+    modified_at = excluded.modified_at,
+    -- Important: the reappearance_count expression must inspect the old jobs.is_active value before setting it back to TRUE.
+    reappearance_count =
+        CASE
+            WHEN jobs.is_active = FALSE
+            THEN jobs.reappearance_count + 1
+            ELSE jobs.reappearance_count
+        END,
+    unchanged_republish_count =
+    CASE
+        -- A real modification resets the streak of unchanged publications.
+        WHEN jobs.modified_at IS DISTINCT FROM EXCLUDED.modified_at THEN 0
+        -- Publication date moved, but the job was not modified.
+        WHEN jobs.publication_date IS DISTINCT FROM EXCLUDED.publication_date THEN jobs.unchanged_republish_count + 1
+        -- Nothing relevant changed.
+        ELSE jobs.unchanged_republish_count
+    END,
+    last_seen = CURRENT_TIMESTAMP,
+    is_active = TRUE
 """)
-
 
 INSERT_LOCATION_SQL = text("""
 INSERT INTO job_locations (

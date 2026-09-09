@@ -27,7 +27,22 @@ def register_callbacks(app: Dash):
     )
     def switch_tab(find_jobs_clicks, statistics_clicks):
         if ctx.triggered_id == "statistics-tab":
-            overview, statistics = create_statistics_content()
+            try:
+                overview, statistics = create_statistics_content()
+            except requests.RequestException:
+                overview = []
+                statistics = [
+                    html.Div(
+                        [
+                            html.H3("Statistics unavailable"),
+                            html.P(
+                                "The statistics API is currently unavailable. "
+                                "Please try again later."
+                            ),
+                        ],
+                        className="statistics-error",
+                    )
+                ]
 
             return (
                 {"display": "none"},

@@ -505,6 +505,22 @@ a {
   font-weight: 700;
 }
 
+.statistics-error {
+  padding: 24px;
+  border: 1px solid #e5a0ad;
+  border-radius: 16px;
+  background: #fff5f7;
+}
+
+.statistics-error h3 {
+  margin: 0 0 8px;
+}
+
+.statistics-error p {
+  margin: 0;
+  color: var(--muted-text);
+}
+
 /* #endregion */
 
 /* #region Responsive layout for smaller screens */

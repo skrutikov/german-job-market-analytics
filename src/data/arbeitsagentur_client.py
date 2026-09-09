@@ -1,6 +1,7 @@
 """HTTP client for the Arbeitsagentur job-search interface."""
 
 import base64
+import os
 from typing import Any
 
 import requests
@@ -11,9 +12,7 @@ from src.monitoring.metrics import monitor_arbeitsagentur_request
 class ArbeitsagenturClient:
     """Small client for searching Arbeitsagentur job advertisements."""
 
-    BASE_URL = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
-    JOBS_URL = f"{BASE_URL}/pc/v6/jobs"
-    JOB_DETAILS_URL = f"{BASE_URL}/pc/v4/jobdetails"
+    DEFAULT_BASE_URL = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
 
     API_KEY = "jobboerse-jobsuche"
 
@@ -24,6 +23,14 @@ class ArbeitsagenturClient:
 
     def __init__(self, timeout_seconds: int = 30) -> None:
         self.timeout_seconds = timeout_seconds
+
+        self.base_url = os.getenv(
+            "JOB_API_BASE_URL",
+            self.DEFAULT_BASE_URL,
+        )
+
+        self.jobs_url = f"{self.base_url}/pc/v6/jobs"
+        self.job_details_url = f"{self.base_url}/pc/v4/jobdetails"
 
         self.session = requests.Session()
         self.session.headers.update(
@@ -61,7 +68,7 @@ class ArbeitsagenturClient:
             params[self.LOCATION_SEARCH_PARAM] = location
 
         response = self.session.get(
-            self.JOBS_URL,
+            self.jobs_url,
             params=params,
             timeout=self.timeout_seconds,
         )
@@ -73,6 +80,33 @@ class ArbeitsagenturClient:
             raise TypeError("Expected the API response to be a JSON object")
 
         return data
+
+    def does_job_exist(self, reference_number: str) -> bool:
+        try:
+            self.get_job_details(reference_number)
+            return True
+
+        except requests.HTTPError as error:
+            response = error.response
+
+            if response is None or response.status_code != 404:
+                raise
+
+            try:
+                data = response.json()
+            except requests.JSONDecodeError:
+                raise
+
+            messages = data.get("messages", [])
+
+            if any(
+                isinstance(message, dict)
+                and message.get("code") == "STELLENANGEBOT_NICHT_GEFUNDEN"
+                for message in messages
+            ):
+                return False
+
+            raise
 
     @monitor_arbeitsagentur_request("get_job_details")
     def get_job_details(self, reference_number: str) -> dict[str, Any]:
@@ -86,7 +120,7 @@ class ArbeitsagenturClient:
         ).decode("ascii")
 
         response = self.session.get(
-            f"{self.JOB_DETAILS_URL}/{encoded_reference_number}",
+            f"{self.job_details_url}/{encoded_reference_number}",
             timeout=self.timeout_seconds,
         )
         response.raise_for_status()

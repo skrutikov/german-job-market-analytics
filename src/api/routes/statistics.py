@@ -119,6 +119,17 @@ GROUP BY category
 ORDER BY job_count DESC, category ASC
 """)
 
+# Count jobs by the month in which they were first published.
+GET_PUBLICATION_TREND_SQL = text("""
+SELECT
+    DATE_TRUNC('month', first_publication_date)::date AS month,
+    COUNT(*) AS job_count
+FROM jobs
+WHERE first_publication_date IS NOT NULL
+GROUP BY 1
+ORDER BY 1
+""")
+
 # endregion
 
 
@@ -163,6 +174,13 @@ class CategoryStatisticsModel(BaseModel):
     """The number of job advertisements in a standardized category."""
 
     category: str
+    job_count: int
+
+
+class PublicationTrendModel(BaseModel):
+    """The number of job advertisements first published in a month."""
+
+    month: date
     job_count: int
 
 
@@ -386,6 +404,38 @@ def get_category_statistics() -> list[CategoryStatisticsModel]:
         )
 
     return [CategoryStatisticsModel(**row._mapping) for row in rows]
+
+
+@router.get(
+    "/publication-trends",
+    summary="Get publication trends",
+    response_description="Monthly numbers of published job advertisements",
+    response_model=list[PublicationTrendModel],
+    responses={
+        503: {
+            "description": "The job database is unavailable",
+        }
+    },
+)
+def get_publication_trends() -> list[PublicationTrendModel]:
+    """
+    Return the number of job advertisements first published per month.
+
+    Months without publications are included with a job count of zero.
+    """
+    try:
+        with get_database_connection() as connection:
+            rows = connection.execute(GET_PUBLICATION_TREND_SQL).fetchall()
+
+    except DatabaseUnavailableError:
+        logger.exception("Could not read publication trends from the job database")
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The job database is unavailable.",
+        )
+
+    return [PublicationTrendModel(**row._mapping) for row in rows]
 
 
 # endregion

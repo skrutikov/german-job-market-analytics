@@ -9,6 +9,7 @@ sqlalchemy>=2.0,<3.0
 psycopg[binary]>=3.2,<4.0
 uvicorn>=0.35,<1.0
 prometheus-client>=0.26,<1.0
+elasticsearch>=8.19,<9.0
 
 # Development and testing
 flake8>=7,<8

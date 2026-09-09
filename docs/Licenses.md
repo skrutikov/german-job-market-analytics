@@ -11,3 +11,9 @@
 - https://uxwing.com/map-color-icon/
 - https://uxwing.com/column-chart-icon/
 - https://uxwing.com/search-line-icon/
+- https://uxwing.com/json-code-file-black-icon/
+
+- https://www.python.org/community/logos/
+- https://commons.wikimedia.org/wiki/File:Postgresql_elephant.svg
+- https://commons.wikimedia.org/wiki/File:Prometheus_software_logo.svg
+- https://commons.wikimedia.org/wiki/File:Grafana_logo.svg

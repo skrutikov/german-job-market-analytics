@@ -104,6 +104,13 @@ def _clean_job(raw_job: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _is_job_in_germany(job: dict[str, Any]) -> bool:
+    return any(
+        location.get("country") == "DEUTSCHLAND"
+        for location in job.get("locations", [])
+    )
+
+
 def transform_data(source_path: Path) -> Path:
     """Transform raw job details and return the clean JSON path."""
     clean_output_path = (
@@ -111,8 +118,8 @@ def transform_data(source_path: Path) -> Path:
     )
 
     job_details = load_json(source_path)
-
     clean_jobs = [_clean_job(job) for job in job_details]
+    clean_jobs = [job for job in clean_jobs if _is_job_in_germany(job)]
 
     geocoder = JobLocationGeocoder()
     clean_jobs, num_malformed_locations = geocoder.enrich_jobs_with_geocoding(

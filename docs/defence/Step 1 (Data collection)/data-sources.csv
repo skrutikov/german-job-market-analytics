@@ -1,0 +1,2 @@
+source,technique,sample_data
+Bundesagentur für Arbeit Jobbörse,REST API using Python requests,"job title; company; occupation; location; publication date; salary; description"

@@ -36,15 +36,11 @@ PUSHGATEWAY_URL = os.getenv(
 )
 
 
-DASH_DEBUG = os.getenv("DASH_DEBUG", "true").lower() == "true"
-
-
 # region Arbeitsagentur API / ETL
 
-DEFAULT_JOB_SEARCH_KEYWORDS = ("Data Engineer", "Data Analyst")
+DEFAULT_JOB_SEARCH_KEYWORDS = ("Data Engineer", "Data Analyst", "AI Engineer")
 API_START_PAGE = 1
 API_REQUEST_PAGE_SIZE = 50
-NUM_API_REQUESTS_PER_SEARCH = 3
 
 # endregion
 
@@ -118,11 +114,12 @@ CATEGORY_KEYWORDS = {
 
 # region Dashboard
 
+DASH_DEBUG = os.getenv("DASH_DEBUG", "true").lower() == "true"
+
 JOBS_PAGE_SIZE = 20
 
 JOB_ANY_CATEGORY_DROPDOWN_VALUE = "all"
 JOB_ANY_CATEGORY_DROPDOWN_LABEL = "Any category"
-
 
 CATEGORY_COLORS = {
     "Data Engineering": "#0072B2",  # blue
@@ -132,5 +129,17 @@ CATEGORY_COLORS = {
     "Cloud / DevOps": "#009E73",  # bluish green
     "Other": "#7F7F7F",  # gray
 }
+
+# endregion
+
+
+# region Elasticsearch
+
+ELASTICSEARCH_URL = os.getenv(
+    "ELASTICSEARCH_URL",
+    "http://127.0.0.1:9200",
+)
+
+ELASTICSEARCH_JOBS_INDEX = "jobs"
 
 # endregion
