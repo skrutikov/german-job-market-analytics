@@ -6,6 +6,8 @@ from src.data.arbeitsagentur_client import ArbeitsagenturClient
 
 
 class FakeResponse:
+    """A lightweight mock/fake for requests.Response."""
+
     def __init__(self, data: dict | None = None) -> None:
         self._data = data or {"stellenangebote": []}
 
