@@ -2,6 +2,7 @@ from src.data.etl.transform_data import _clean_job, _is_job_in_germany
 
 
 def test_clean_job_maps_raw_fields_to_internal_schema() -> None:
+    """Verify that raw API job data is mapped into the internal job schema."""
     raw_job = {
         "referenznummer": "10001-123456-S",
         "stellenangebotsTitel": "Senior Data Engineer",
@@ -55,6 +56,7 @@ def test_clean_job_maps_raw_fields_to_internal_schema() -> None:
 
 
 def test_clean_job_handles_malformed_locations() -> None:
+    """Verify that malformed location data is ignored without breaking transformation."""
     raw_job = {
         "referenznummer": "10001-123456-S",
         "stellenangebotsTitel": "Data Analyst",
@@ -68,6 +70,7 @@ def test_clean_job_handles_malformed_locations() -> None:
 
 
 def test_is_job_in_germany_accepts_german_location() -> None:
+    """Verify that a job is accepted when at least one location is in Germany."""
     job = {
         "locations": [
             {"country": "FRANKREICH"},
@@ -79,6 +82,7 @@ def test_is_job_in_germany_accepts_german_location() -> None:
 
 
 def test_is_job_in_germany_rejects_non_german_job() -> None:
+    """Verify that jobs without a German location are rejected."""
     job = {
         "locations": [
             {"country": "FRANKREICH"},
