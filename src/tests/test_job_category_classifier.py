@@ -1,4 +1,4 @@
-# Run it with 
+# Run it with
 #   pytest src/tests/test_job_category_classifier.py
 import pytest
 
@@ -22,10 +22,12 @@ def test_classify_job(
     occupation: str | None,
     expected: str,
 ) -> None:
+    """Verify that representative job titles map to the expected categories."""
     assert classify_job(title, occupation) == expected
 
 
 def test_short_keyword_is_not_matched_inside_word() -> None:
+    """Verify that short keywords do not match accidentally inside larger words."""
     assert (
         classify_job(
             "Verstärkung für unsere Softwareabteilung",
@@ -36,6 +38,7 @@ def test_short_keyword_is_not_matched_inside_word() -> None:
 
 
 def test_ai_category_has_priority_over_backend() -> None:
+    """Verify that AI/ML takes priority when a title also matches Backend."""
     assert (
         classify_job(
             "Backend Developer for Machine Learning",
