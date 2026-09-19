@@ -17,6 +17,7 @@ class FakeResponse:
 
 
 def test_search_jobs_builds_correct_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify that job searches send the expected URL, parameters, and timeout."""
     client = ArbeitsagenturClient(timeout_seconds=12)
     captured_request: dict[str, object] = {}
 
@@ -55,6 +56,7 @@ def test_search_jobs_builds_correct_request(monkeypatch: pytest.MonkeyPatch) -> 
 
 @pytest.mark.parametrize("page_number", [0, -1])
 def test_search_jobs_rejects_invalid_page_number(page_number: int) -> None:
+    """Verify that page numbers below 1 are rejected before an API request."""
     client = ArbeitsagenturClient()
 
     with pytest.raises(ValueError, match="page_number must be at least 1"):
@@ -66,6 +68,7 @@ def test_search_jobs_rejects_invalid_page_number(page_number: int) -> None:
 
 @pytest.mark.parametrize("jobs_per_page", [0, 101])
 def test_search_jobs_rejects_invalid_page_size(jobs_per_page: int) -> None:
+    """Verify that page sizes outside the supported range are rejected."""
     client = ArbeitsagenturClient()
 
     with pytest.raises(
@@ -81,6 +84,7 @@ def test_search_jobs_rejects_invalid_page_size(jobs_per_page: int) -> None:
 def test_get_job_details_encodes_reference_number(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Verify that job IDs are Base64-encoded in detail-request URLs."""
     client = ArbeitsagenturClient(timeout_seconds=8)
     captured_request: dict[str, object] = {}
 
@@ -93,9 +97,7 @@ def test_get_job_details_encodes_reference_number(
 
     result = client.get_job_details("10001-123456-S")
 
-    encoded_reference_number = base64.b64encode(
-        b"10001-123456-S"
-    ).decode("ascii")
+    encoded_reference_number = base64.b64encode(b"10001-123456-S").decode("ascii")
 
     assert result == {"referenznummer": "10001-123456-S"}
     assert captured_request == {
@@ -105,6 +107,7 @@ def test_get_job_details_encodes_reference_number(
 
 
 def test_get_job_details_rejects_empty_reference_number() -> None:
+    """Verify that job-detail requests reject an empty job ID."""
     client = ArbeitsagenturClient()
 
     with pytest.raises(
