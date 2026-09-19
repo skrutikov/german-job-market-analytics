@@ -6,6 +6,8 @@ from src.data.arbeitsagentur_client import ArbeitsagenturClient
 
 
 class FakeResponse:
+    """A lightweight mock/fake for requests.Response."""
+
     def __init__(self, data: dict | None = None) -> None:
         self._data = data or {"stellenangebote": []}
 
@@ -32,6 +34,7 @@ def test_search_jobs_builds_correct_request(monkeypatch: pytest.MonkeyPatch) -> 
         captured_request["timeout"] = timeout
         return FakeResponse()
 
+    # inject our fake_get function into the client.session.get method
     monkeypatch.setattr(client.session, "get", fake_get)
 
     result = client.search_jobs(
