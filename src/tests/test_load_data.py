@@ -6,6 +6,7 @@ from src.data.etl.load_data import _prepare_job
 
 
 def test_prepare_job_converts_dates_and_excludes_locations() -> None:
+    """Verify that database records convert dates and exclude separate location data."""
     job = {
         "reference_number": "10001-123456-S",
         "title": "Data Engineer",
@@ -38,6 +39,7 @@ def test_prepare_job_converts_dates_and_excludes_locations() -> None:
 def test_prepare_job_rejects_invalid_reference_number(
     reference_number: object,
 ) -> None:
+    """Verify that database preparation rejects missing or invalid job IDs."""
     job = {
         "reference_number": reference_number,
         "locations": [],
