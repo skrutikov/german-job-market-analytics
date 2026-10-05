@@ -3,6 +3,6 @@ apiVersion: 1
 datasources:
   - name: Prometheus
     type: prometheus
-    access: proxy
-    url: http://prometheus:9090
-    isDefault: true
+    access: proxy # Grafana itself sends the queries to Prometheus
+    url: http://prometheus:9090 # Grafana connects to Prometheus through the Docker network using the Prometheus service name
+    isDefault: true # use Prometheus as the default Grafana data source

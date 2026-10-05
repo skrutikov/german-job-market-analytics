@@ -186,7 +186,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "histogram_quantile(\r\n    0.95,\r\n    sum by (le) (\r\n        rate(job_search_duration_seconds_bucket[1m])\r\n    )\r\n)",
+                        "expr": "histogram_quantile(\r\n    0.95,\r\n    sum by (le) (\r\n        rate(job_search_duration_seconds_bucket[60m])\r\n    )\r\n)",
                         "legendFormat": "__auto",
                         "range": true
                       }

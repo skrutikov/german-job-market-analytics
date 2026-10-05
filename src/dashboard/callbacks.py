@@ -4,7 +4,11 @@ import requests
 
 from dash import ALL, Dash, Input, Output, State, ctx, html, no_update
 
-from src.config.settings import FASTAPI_URL, JOB_ANY_CATEGORY_DROPDOWN_VALUE, JOBS_PAGE_SIZE
+from src.config.settings import (
+    FASTAPI_URL,
+    JOB_ANY_CATEGORY_DROPDOWN_VALUE,
+    JOBS_PAGE_SIZE,
+)
 from src.dashboard.jobs import (
     create_job_card,
     create_job_details_modal_content,

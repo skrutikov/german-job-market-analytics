@@ -1,5 +1,5 @@
 route:
-  receiver: "default"
+  receiver: "default" # routes all alerts to the default receiver
 
 receivers:
-  - name: "default"
+  - name: "default" # no external notifications (e.g. Slack or email) configured

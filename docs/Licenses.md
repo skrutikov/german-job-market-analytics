@@ -17,3 +17,11 @@
 - https://commons.wikimedia.org/wiki/File:Postgresql_elephant.svg
 - https://commons.wikimedia.org/wiki/File:Prometheus_software_logo.svg
 - https://commons.wikimedia.org/wiki/File:Grafana_logo.svg
+
+- https://uxwing.com/camera-icon/
+- https://uxwing.com/video-camera-icon/
+- https://uxwing.com/recycle-bin-icon/
+- https://uxwing.com/pencil-icon/
+- https://uxwing.com/red-x-icon/
+- https://uxwing.com/access-denied-icon/
+- https://uxwing.com/crown-color-icon/

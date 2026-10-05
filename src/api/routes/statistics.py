@@ -420,8 +420,6 @@ def get_category_statistics() -> list[CategoryStatisticsModel]:
 def get_publication_trends() -> list[PublicationTrendModel]:
     """
     Return the number of job advertisements first published per month.
-
-    Months without publications are included with a job count of zero.
     """
     try:
         with get_database_connection() as connection:

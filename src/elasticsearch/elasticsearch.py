@@ -96,7 +96,8 @@ JOBS_INDEX_DEFINITION = {
 
 # Performs the relational → document transformation.
 # REMARKS:
-#   ARRAY_AGG() is for putting different locations of a job in the same job-document. For example:
+#   ARRAY_AGG() is for putting different locations of a job in the same job-document as an array.
+#   For example:
 #   job  "REF-123|Data Engineer|Company X"
 #   with job_locations  "REF-123|Berlin"  and  "REF-123|Potsdam"
 #   should become one document:
