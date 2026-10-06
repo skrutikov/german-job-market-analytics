@@ -115,6 +115,8 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+The editable install exposes the `job_market` package from the `src/` directory while keeping the source tree as the code being executed.
+
 > **Note:** If on Windows, run `.venv\Scripts\Activate.ps1` instead of `source .venv\bin\activate`.
 
 #### Start PostgreSQL
