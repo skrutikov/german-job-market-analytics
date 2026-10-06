@@ -19,6 +19,7 @@ The complete system runs locally through Docker Compose. Airflow orchestrates th
 - Dash frontend with search, job details, maps, and statistics
 - Daily orchestration with Apache Airflow
 - Docker Compose deployment
+- Nginx reverse proxy as the single application entry point
 - Monitoring with Prometheus, Pushgateway, Grafana, and Alertmanager
 
 ## Architecture
@@ -27,7 +28,7 @@ The complete system runs locally through Docker Compose. Airflow orchestrates th
 
 The data pipeline retrieves advertisements from the Bundesagentur für Arbeit, stores timestamped raw responses, transforms and enriches the records, and loads them into PostgreSQL. PostgreSQL is the authoritative data store. Elasticsearch contains a rebuildable search representation used for full-text queries.
 
-FastAPI provides the application API, which is consumed by the Dash frontend. The recurring ETL workflow is orchestrated by Airflow. Prometheus collects application and ETL metrics, which are visualised in Grafana.
+FastAPI provides the application API, which is consumed by the Dash frontend. Nginx is the browser-facing application gateway: `/` is proxied to Dash and `/api/` to FastAPI, so the backend and frontend containers do not publish their ports directly to the host. The recurring ETL workflow is orchestrated by Airflow. Prometheus collects application and ETL metrics, which are visualised in Grafana.
 
 ## Technology Stack
 
@@ -41,6 +42,7 @@ FastAPI provides the application API, which is consumed by the Dash frontend. Th
 | Frontend | Dash, Folium |
 | Orchestration | Apache Airflow |
 | Deployment | Docker, Docker Compose |
+| Reverse proxy | Nginx |
 | Monitoring | Prometheus, Pushgateway, Grafana, Alertmanager |
 
 ## Project Folder Structure
@@ -50,6 +52,7 @@ FastAPI provides the application API, which is consumed by the Dash frontend. Th
 ├── airflow/          Airflow DAG and container configuration
 ├── data/             Generated raw and processed data
 ├── grafana/          Grafana dashboards and provisioning
+├── nginx/            Nginx reverse-proxy configuration
 ├── prometheus/       Prometheus and Alertmanager configuration
 ├── src/
 │   └── job_market/
@@ -91,9 +94,9 @@ Start the application:
 
 ### Open in your browser
 
-**Swagger (Backend):** http://127.0.0.1:8000/docs
+**Swagger (Backend, via Nginx):** http://127.0.0.1/api/docs
 
-**Dash (Frontend):** http://127.0.0.1:8050
+**Dash (Frontend, via Nginx):** http://127.0.0.1
 
 **Airflow:** http://127.0.0.1:8080
 
@@ -102,6 +105,19 @@ Start the application:
 **Prometheus-Alertmanager:** http://127.0.0.1:9093
 
 **Grafana:** http://127.0.0.1:3000
+
+### Reverse Proxy
+
+In the Docker deployment, Nginx is the only host-published entry point for the application itself:
+
+- `/` proxies to the Dash frontend.
+- `/api/` proxies to FastAPI.
+- FastAPI and Dash are reachable only through the internal Docker network.
+- API traffic is rate-limited per client IP.
+- Nginx adds basic browser security headers and hides its version.
+- Administrative services such as Airflow, Prometheus, Grafana, Elasticsearch, and Alertmanager remain bound to localhost rather than being routed through the public application gateway.
+
+This is reverse-proxy hardening, not user authentication or TLS termination. Authentication and HTTPS can be added later without changing the backend/frontend container topology.
 
 ### Local Development
 

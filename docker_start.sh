@@ -2,16 +2,16 @@
 
 set -e
 
-SWAGGER_URL="http://127.0.0.1:8000/docs"
-HEALTH_URL="http://127.0.0.1:8000/health"
-DASH_URL="http://127.0.0.1:8050"
+SWAGGER_URL="http://127.0.0.1/api/docs"
+HEALTH_URL="http://127.0.0.1/api/health"
+DASH_URL="http://127.0.0.1"
 AIRFLOW_URL="http://127.0.0.1:8080"
 PROMETHEUS_URL="http://127.0.0.1:9090"
 ALERTMANAGER_URL="http://127.0.0.1:9093"
 GRAFANA_URL="http://127.0.0.1:3000"
 ELASTICSEARCH_URL="http://127.0.0.1:9200"
 
-docker compose up --build -d postgres elasticsearch backend frontend airflow prometheus pushgateway alertmanager grafana
+docker compose up --build -d postgres elasticsearch backend frontend nginx airflow prometheus pushgateway alertmanager grafana
 
 wait_for_url() {
     url="$1"
@@ -43,11 +43,14 @@ wait_for_url() {
     exit 1
 }
 
-echo "Waiting for FastAPI..."
-wait_for_url "$HEALTH_URL" backend
+echo "Waiting for Nginx..."
+wait_for_url "http://127.0.0.1/nginx-health" nginx
 
-echo "Waiting for Dash..."
-wait_for_url "$DASH_URL" frontend
+echo "Waiting for FastAPI through Nginx..."
+wait_for_url "$HEALTH_URL" nginx
+
+echo "Waiting for Dash through Nginx..."
+wait_for_url "$DASH_URL" nginx
 
 echo "Waiting for Airflow..."
 wait_for_url "$AIRFLOW_URL" airflow
@@ -62,7 +65,7 @@ echo "Waiting for Grafana..."
 wait_for_url "$GRAFANA_URL" grafana
 
 echo "Waiting for Elasticsearch..."
-wait_for_url "$GRAFANA_URL" elasticsearch
+wait_for_url "$ELASTICSEARCH_URL" elasticsearch
 
 AIRFLOW_PASSWORD_LINE=$(
     docker compose logs airflow 2>/dev/null \

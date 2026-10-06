@@ -40,3 +40,27 @@ jobs:
       - name: Build Docker Compose services
         run: |
           docker compose build
+
+      - name: Smoke test Nginx application gateway
+        run: |
+          docker compose up -d postgres elasticsearch backend frontend nginx
+
+          for attempt in {1..60}; do
+            if curl -fs http://127.0.0.1/nginx-health >/dev/null \
+              && curl -fs http://127.0.0.1/api/health >/dev/null \
+              && curl -fs http://127.0.0.1/ >/dev/null; then
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          echo "Nginx application gateway did not become ready." >&2
+          docker compose ps
+          docker compose logs nginx backend frontend
+          exit 1
+
+      - name: Stop Docker Compose services
+        if: always()
+        run: |
+          docker compose down -v
