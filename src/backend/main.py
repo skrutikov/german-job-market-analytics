@@ -14,9 +14,9 @@ Swagger UI is available at:
 from fastapi import FastAPI
 from prometheus_client import make_asgi_app
 
-from src.api.routes.jobs import router as jobs_router
-from src.api.routes.health import router as health_router
-from src.api.routes.statistics import router as statistics_router
+from src.backend.routes.jobs import router as jobs_router
+from src.backend.routes.health import router as health_router
+from src.backend.routes.statistics import router as statistics_router
 
 api = FastAPI(
     title="Liora Job Market API",
