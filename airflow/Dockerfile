@@ -7,7 +7,8 @@ RUN pip install --no-cache-dir \
     -r /requirements.txt \
     -r /airflow-requirements.txt
 
-COPY src /opt/airflow/src
-COPY airflow/dags /opt/airflow/dags
+COPY --chown=airflow:root pyproject.toml /opt/airflow/pyproject.toml
+COPY --chown=airflow:root src /opt/airflow/src
+COPY --chown=airflow:root airflow/dags /opt/airflow/dags
 
-ENV PYTHONPATH=/opt/airflow
+RUN pip install --no-cache-dir --no-deps -e /opt/airflow

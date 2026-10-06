@@ -55,7 +55,7 @@ services:
     command:
       [
         "python", "-m", "uvicorn",
-        "src.api.main:api",
+        "job_market.backend.main:api",
         "--host", "0.0.0.0",
         "--port", "8000"
       ]
@@ -72,7 +72,7 @@ services:
     ports:
       - "127.0.0.1:8050:8050"
     command:
-      ["python", "-m", "src.dashboard.app"]
+      ["python", "-m", "job_market.frontend.app"]
 
   data-update:
     build:
@@ -93,7 +93,7 @@ services:
       - job-market-data:/app/data
       - ./data/samples:/app/data/samples:ro
     command:
-      ["python", "-m", "src.data.etl.etl"]
+      ["python", "-m", "job_market.etl.etl.etl"]
 
   airflow:
     build:

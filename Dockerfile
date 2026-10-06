@@ -26,9 +26,8 @@ ENV RUNNING_IN_DOCKER=1
 # Without this, print() output may appear several seconds later.
 # Very useful for Docker logs.
 ENV PYTHONUNBUFFERED=1
-# This allows imports such as "from src.data.make_dataset import ..."
-# regardless of the current working directory.
-ENV PYTHONPATH=/app
+# Install the project package from the src layout while keeping imports linked to the source tree.
+RUN pip install --no-cache-dir --no-deps -e .
 
 # FastAPI (This is documentation only.)
 EXPOSE 8000

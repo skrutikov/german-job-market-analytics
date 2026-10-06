@@ -4,7 +4,7 @@ set -e
 
 docker compose run --rm --build \
   data-update \
-  python -m src.data.etl.etl "$@"
+  python -m job_market.etl.etl.etl "$@"
 
 # Examples:
 # ./docker_update_data.sh --keyword "Data Engineer" --keyword "AI Engineer"

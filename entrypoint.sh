@@ -8,7 +8,7 @@ echo "Starting FastAPI on port 8000..."
 # Without this, it would listen only on 127.0.0.1 inside the container,
 # and Docker could not forward requests from the browser.
 # "&" runs Uvicorn in the background so the script can continue.
-python -m uvicorn src.api.main:api \
+python -m uvicorn job_market.backend.main:api \
     --host 0.0.0.0 \
     --port 8000 &
 
@@ -19,4 +19,4 @@ API_PID=$!
 trap 'kill "$API_PID"' INT TERM EXIT
 
 echo "Starting Dash on port 8050..."
-python -m src.dashboard.app
+python -m job_market.frontend.app
