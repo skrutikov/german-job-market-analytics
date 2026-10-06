@@ -3,9 +3,9 @@
 from pathlib import Path
 from dash import Dash
 
-from src.config.settings import DASH_DEBUG, FRONTEND_PORT
-from src.dashboard.callbacks import register_callbacks
-from src.dashboard.layouts import create_layout
+from job_market.config.settings import DASH_DEBUG, FRONTEND_PORT
+from job_market.frontend.callbacks import register_callbacks
+from job_market.frontend.layouts import create_layout
 
 ASSETS_DIRECTORY = Path(__file__).parent / "assets"
 

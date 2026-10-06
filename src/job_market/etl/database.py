@@ -6,8 +6,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Connection as SQLAlchemyConnection
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.config.settings import DATABASE_URL
-from src.monitoring.metrics import monitor_database_connection
+from job_market.config.settings import DATABASE_URL
+from job_market.monitoring.metrics import monitor_database_connection
 
 
 class DatabaseUnavailableError(Exception):

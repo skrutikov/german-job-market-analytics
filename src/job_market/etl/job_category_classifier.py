@@ -1,6 +1,6 @@
 import re
 
-from src.config.settings import CATEGORY_KEYWORDS
+from job_market.config.settings import CATEGORY_KEYWORDS
 
 
 def _contains_keyword(text: str, keyword: str) -> bool:

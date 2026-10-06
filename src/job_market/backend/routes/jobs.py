@@ -11,16 +11,16 @@ import logging
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
-from src.elasticsearch.elasticsearch import (
+from job_market.elasticsearch.elasticsearch import (
     ElasticsearchUnavailableError,
     search_job_reference_numbers,
 )
 
-from src.data.database import (
+from job_market.etl.database import (
     DatabaseUnavailableError,
     get_database_connection,
 )
-from src.monitoring.metrics import monitor_job_search
+from job_market.monitoring.metrics import monitor_job_search
 
 # region Setup
 

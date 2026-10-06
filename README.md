@@ -52,11 +52,13 @@ FastAPI provides the application API, which is consumed by the Dash frontend. Th
 ├── grafana/          Grafana dashboards and provisioning
 ├── prometheus/       Prometheus and Alertmanager configuration
 ├── src/
-│   ├── api/          FastAPI backend
-│   ├── dashboard/    Dash frontend
-│   ├── data/         ETL, database access, enrichment and classification
-│   ├── elasticsearch/
-│   └── monitoring/
+│   └── job_market/
+│       ├── backend/       FastAPI backend
+│       ├── frontend/      Dash frontend
+│       ├── etl/           ETL, database access, enrichment and classification
+│       ├── elasticsearch/
+│       ├── monitoring/
+│       └── config/
 ├── tests/
 ├── docker-compose.yml
 ├── Dockerfile
@@ -75,7 +77,7 @@ Run:
 ./docker_update_data.sh --keyword "Data Engineer" --keyword "Data Analyst" --keyword "AI Engineer"
 ```
 
-You can replace these search terms or add more --keyword arguments. If no `--keyword` arguments are provided, the default search terms configured in `src/config/settings.py` are used.
+You can replace these search terms or add more --keyword arguments. If no `--keyword` arguments are provided, the default search terms configured in `src/job_market/config/settings.py` are used.
 
 > **Note:** You can alternatively use `./docker_update_data.sh --simulate` to reset and populate the database with predefined sample data, for example if the Bundesagentur für Arbeit API is unavailable.
 
@@ -110,6 +112,7 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+pip install -e .
 ```
 
 > **Note:** If on Windows, run `.venv\Scripts\Activate.ps1` instead of `source .venv\bin\activate`.
@@ -125,13 +128,13 @@ docker compose up -d postgres
 #### Start the backend API
 
 ```sh
-python -m uvicorn src.api.main:api --reload
+python -m uvicorn job_market.backend.main:api --reload
 ```
 
 #### Start the Dash frontend
 
 ```sh
-python -m src.dashboard.app
+python -m job_market.frontend.app
 ```
 
 ## Report

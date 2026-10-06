@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 import pytest
 
-from src.data.etl.load_data import _prepare_job
+from job_market.etl.etl.load_data import _prepare_job
 
 
 def test_prepare_job_converts_dates_and_excludes_locations() -> None:

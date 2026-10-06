@@ -6,7 +6,7 @@ import plotly.express as px
 from plotly.graph_objects import Figure
 from dash import html
 
-from src.config.settings import CATEGORY_COLORS, JOB_CATEGORIES
+from job_market.config.settings import CATEGORY_COLORS, JOB_CATEGORIES
 
 # region Private helper functions
 

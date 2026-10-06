@@ -5,11 +5,11 @@ from elasticsearch import Elasticsearch, NotFoundError
 from elasticsearch.helpers import bulk
 from elastic_transport import ConnectionError, ConnectionTimeout
 
-from src.config.settings import (
+from job_market.config.settings import (
     ELASTICSEARCH_JOBS_INDEX,
     ELASTICSEARCH_URL,
 )
-from src.data.database import get_database_connection
+from job_market.etl.database import get_database_connection
 
 
 class ElasticsearchUnavailableError(RuntimeError):

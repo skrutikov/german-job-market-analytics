@@ -1,11 +1,11 @@
 from dash import dcc, html
 
-from src.config.settings import (
+from job_market.config.settings import (
     JOB_ANY_CATEGORY_DROPDOWN_LABEL,
     JOB_ANY_CATEGORY_DROPDOWN_VALUE,
     JOB_CATEGORIES,
 )
-from src.dashboard.jobs import create_map
+from job_market.frontend.jobs import create_map
 
 # region Private helper functions
 

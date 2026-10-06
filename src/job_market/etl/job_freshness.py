@@ -4,8 +4,8 @@ import requests
 from sqlalchemy import text
 from collections.abc import Callable
 
-from src.data.arbeitsagentur_client import ArbeitsagenturClient
-from src.data.database import get_database_connection
+from job_market.etl.arbeitsagentur_client import ArbeitsagenturClient
+from job_market.etl.database import get_database_connection
 
 
 from datetime import datetime

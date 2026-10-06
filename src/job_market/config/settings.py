@@ -11,7 +11,7 @@ FASTAPI_URL = os.getenv(
 FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", "8050"))
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIRECTORY = PROJECT_ROOT / "data"
 
 

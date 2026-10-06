@@ -4,7 +4,7 @@ from typing import Any
 from geopy.extra.rate_limiter import RateLimiter
 from geopy.geocoders import Nominatim
 
-from src.monitoring.metrics import record_failed_geocoding
+from job_market.monitoring.metrics import record_failed_geocoding
 
 GEOPY_USER_AGENT = "job-market-mapper"
 GEOPY_DELAY_SECONDS = 1.0

@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from src.data.database import (
+from job_market.etl.database import (
     DatabaseUnavailableError,
     get_database_connection,
 )

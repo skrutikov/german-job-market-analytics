@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 from dash import dcc, html
 
-from src.config.settings import CATEGORY_COLORS, FASTAPI_URL
+from job_market.config.settings import CATEGORY_COLORS, FASTAPI_URL
 
 # region Private helper functions
 

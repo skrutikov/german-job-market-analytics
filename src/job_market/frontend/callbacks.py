@@ -4,17 +4,17 @@ import requests
 
 from dash import ALL, Dash, Input, Output, State, ctx, html, no_update
 
-from src.config.settings import (
+from job_market.config.settings import (
     FASTAPI_URL,
     JOB_ANY_CATEGORY_DROPDOWN_VALUE,
     JOBS_PAGE_SIZE,
 )
-from src.dashboard.jobs import (
+from job_market.frontend.jobs import (
     create_job_card,
     create_job_details_modal_content,
     create_map,
 )
-from src.dashboard.statistics import create_statistics_content
+from job_market.frontend.statistics import create_statistics_content
 
 
 def register_callbacks(app: Dash):

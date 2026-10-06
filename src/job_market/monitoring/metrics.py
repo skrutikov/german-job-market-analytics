@@ -14,7 +14,7 @@ from prometheus_client import (
     push_to_gateway,
 )
 
-from src.config.settings import PUSHGATEWAY_URL
+from job_market.config.settings import PUSHGATEWAY_URL
 
 # region Setup
 

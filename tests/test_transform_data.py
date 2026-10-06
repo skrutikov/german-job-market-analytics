@@ -1,4 +1,4 @@
-from src.data.etl.transform_data import _clean_job, _is_job_in_germany
+from job_market.etl.etl.transform_data import _clean_job, _is_job_in_germany
 
 
 def test_clean_job_maps_raw_fields_to_internal_schema() -> None:

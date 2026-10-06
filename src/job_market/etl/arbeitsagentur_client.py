@@ -6,7 +6,7 @@ from typing import Any
 
 import requests
 
-from src.monitoring.metrics import monitor_arbeitsagentur_request
+from job_market.monitoring.metrics import monitor_arbeitsagentur_request
 
 
 class ArbeitsagenturClient:

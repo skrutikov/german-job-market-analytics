@@ -8,7 +8,7 @@ from typing import Any
 
 import requests
 
-from src.config.settings import (
+from job_market.config.settings import (
     API_START_PAGE,
     JOB_DETAIL_FAILURES_FILE_NAME,
     JOB_DETAILS_FILE_NAME,
@@ -16,9 +16,9 @@ from src.config.settings import (
     DEFAULT_JOB_SEARCH_KEYWORDS,
     RAW_DATA_DIRECTORY,
 )
-from src.data.arbeitsagentur_client import ArbeitsagenturClient
-from src.data.utils.json_utils import save_json
-from src.data.job_freshness import get_job_states
+from job_market.etl.arbeitsagentur_client import ArbeitsagenturClient
+from job_market.etl.utils.json_utils import save_json
+from job_market.etl.job_freshness import get_job_states
 
 logger = logging.getLogger(__name__)
 

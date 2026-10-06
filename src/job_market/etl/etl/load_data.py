@@ -8,8 +8,8 @@ from typing import Any
 from sqlalchemy import Connection, text
 from sqlalchemy.exc import IntegrityError
 
-from src.data.database import get_database_connection
-from src.data.utils.json_utils import load_json
+from job_market.etl.database import get_database_connection
+from job_market.etl.utils.json_utils import load_json
 
 # region SQL statements
 

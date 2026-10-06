@@ -2,7 +2,7 @@ import base64
 
 import pytest
 
-from src.data.arbeitsagentur_client import ArbeitsagenturClient
+from job_market.etl.arbeitsagentur_client import ArbeitsagenturClient
 
 
 class FakeResponse:

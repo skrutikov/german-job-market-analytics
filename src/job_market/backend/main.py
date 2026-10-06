@@ -2,10 +2,10 @@
 Application entry point for the Liora Job Market API.
 
 Run from the project root with:
-    python -m uvicorn src.api.main:api --reload
+    python -m uvicorn job_market.backend.main:api --reload
 
 Run in Docker with:
-    exec python -m uvicorn src.api.main:api --host 0.0.0.0 --port 8000
+    exec python -m uvicorn job_market.backend.main:api --host 0.0.0.0 --port 8000
 
 Swagger UI is available at:
     http://127.0.0.1:8000/docs
@@ -14,9 +14,9 @@ Swagger UI is available at:
 from fastapi import FastAPI
 from prometheus_client import make_asgi_app
 
-from src.backend.routes.jobs import router as jobs_router
-from src.backend.routes.health import router as health_router
-from src.backend.routes.statistics import router as statistics_router
+from job_market.backend.routes.jobs import router as jobs_router
+from job_market.backend.routes.health import router as health_router
+from job_market.backend.routes.statistics import router as statistics_router
 
 api = FastAPI(
     title="Liora Job Market API",

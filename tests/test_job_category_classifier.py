@@ -2,7 +2,7 @@
 #   pytest src/tests/test_job_category_classifier.py
 import pytest
 
-from src.data.job_category_classifier import classify_job
+from job_market.etl.job_category_classifier import classify_job
 
 
 @pytest.mark.parametrize(

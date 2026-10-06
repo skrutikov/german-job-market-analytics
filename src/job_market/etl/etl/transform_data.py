@@ -5,10 +5,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from src.config.settings import CLEAN_JSON_FILE_NAME, PROCESSED_DATA_DIRECTORY
-from src.data.job_location_geocoder import JobLocationGeocoder
-from src.data.utils.json_utils import load_json, save_json
-from src.data.job_category_classifier import classify_job
+from job_market.config.settings import CLEAN_JSON_FILE_NAME, PROCESSED_DATA_DIRECTORY
+from job_market.etl.job_location_geocoder import JobLocationGeocoder
+from job_market.etl.utils.json_utils import load_json, save_json
+from job_market.etl.job_category_classifier import classify_job
 
 logger = logging.getLogger(__name__)
 

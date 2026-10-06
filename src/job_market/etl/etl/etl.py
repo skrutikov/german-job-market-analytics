@@ -3,15 +3,15 @@ from pathlib import Path
 
 from sqlalchemy import text
 
-from src.config.settings import DEFAULT_JOB_SEARCH_KEYWORDS, PUSHGATEWAY_URL
-from src.data.database import get_database_connection
-from src.data.etl.extract_data import extract_data
-from src.data.etl.transform_data import transform_data
-from src.data.etl.load_data import load_data
-from src.data.job_freshness import update_job_freshness
-from src.elasticsearch.elasticsearch import sync_jobs_index
-from src.monitoring.metrics import monitor_etl_run
-from src.data.utils.json_utils import load_json
+from job_market.config.settings import DEFAULT_JOB_SEARCH_KEYWORDS, PUSHGATEWAY_URL
+from job_market.etl.database import get_database_connection
+from job_market.etl.etl.extract_data import extract_data
+from job_market.etl.etl.transform_data import transform_data
+from job_market.etl.etl.load_data import load_data
+from job_market.etl.job_freshness import update_job_freshness
+from job_market.elasticsearch.elasticsearch import sync_jobs_index
+from job_market.monitoring.metrics import monitor_etl_run
+from job_market.etl.utils.json_utils import load_json
 
 
 def _parse_arguments() -> argparse.Namespace:
