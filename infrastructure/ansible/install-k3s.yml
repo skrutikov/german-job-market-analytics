@@ -60,6 +60,7 @@
       retries: 12
       delay: 5
       until: k3s_ready.rc == 0
+      when: not ansible_check_mode
 
     - name: Create the directory for declarative namespace configuration
       ansible.builtin.file:
