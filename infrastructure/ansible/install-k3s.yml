@@ -1,0 +1,106 @@
+---
+- name: Configure Group 3 single-node k3s cluster
+  hosts: k3s_servers
+  become: true
+  gather_facts: true
+
+  vars:
+    # Used only on a fresh installation. Existing k3s installations are NOT upgraded.
+    k3s_install_version: "v1.36.5+k3s1"
+    k3s_install_script: /tmp/group3-install-k3s.sh
+    k3s_namespaces_manifest: /etc/rancher/k3s/group3-namespaces.yaml
+
+  tasks:
+    - name: Verify the target is Ubuntu Linux
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['architecture'] == 'x86_64'
+        fail_msg: "This playbook targets the existing Group 3 Ubuntu amd64 VM only."
+
+    - name: Check whether k3s is already installed
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s
+      register: k3s_binary
+
+    - name: Download the official k3s installer on fresh hosts only
+      ansible.builtin.get_url:
+        url: https://get.k3s.io
+        dest: "{{ k3s_install_script }}"
+        mode: "0755"
+      when: not k3s_binary.stat.exists
+
+    - name: Install k3s on fresh hosts only
+      ansible.builtin.command:
+        argv:
+          - /bin/sh
+          - "{{ k3s_install_script }}"
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_install_version }}"
+      when: not k3s_binary.stat.exists
+
+    - name: Ensure k3s is enabled and running
+      ansible.builtin.systemd_service:
+        name: k3s
+        enabled: true
+        state: started
+
+    - name: Wait for the Kubernetes node to become Ready
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - wait
+          - --for=condition=Ready
+          - node
+          - --all
+          - --timeout=20s
+      register: k3s_ready
+      changed_when: false
+      retries: 12
+      delay: 5
+      until: k3s_ready.rc == 0
+      when: not ansible_check_mode
+
+    - name: Create the directory for declarative namespace configuration
+      ansible.builtin.file:
+        path: /etc/rancher/k3s
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Copy namespace manifests to the VM
+      ansible.builtin.copy:
+        src: files/namespaces.yaml
+        dest: "{{ k3s_namespaces_manifest }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Ensure dev and prod namespaces exist
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - apply
+          - -f
+          - "{{ k3s_namespaces_manifest }}"
+      register: namespace_apply
+      changed_when: "'created' in namespace_apply.stdout or 'configured' in namespace_apply.stdout"
+
+    - name: Display cluster nodes
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/k3s
+          - kubectl
+          - get
+          - nodes
+          - -o
+          - wide
+      changed_when: false
+      register: node_report
+
+    - name: Show node report
+      ansible.builtin.debug:
+        var: node_report.stdout_lines
