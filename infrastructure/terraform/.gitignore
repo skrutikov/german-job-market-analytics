@@ -1,0 +1,16 @@
+# Terraform state often contains sensitive infrastructure data.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Credentials and local configuration.
+*.tfvars
+*.tfvars.json
+.env

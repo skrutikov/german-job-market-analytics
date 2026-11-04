@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars only after Liora confirms the values.
+# terraform.tfvars is ignored by Git.
+create_vm       = false
+node_name       = "CHANGE_ME"
+template_vm_id  = 0
+vm_id           = 0
+vm_name         = "group3-k3s-01"
+network_bridge  = "vmbr0"
+cpu_cores       = 2
+memory_mb       = 4096
