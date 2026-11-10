@@ -47,41 +47,146 @@ Set `download_cloud_image = true` so Terraform manages `proxmox_download_file.ub
 
 For the provider's native approach, see the [cloud-image guide](https://bpg.sh/docs/guides/cloud-image/) and [cloud-init guide](https://bpg.sh/docs/guides/cloud-init/).
 
-## Prepare local WSL environment
+## Local Ubuntu WSL — complete command sequence
 
-1. Use the existing Git branch, in `infrastructure/terraform/`. The sample `terraform.tfvars.example` specifies the temporary VM 101; copy it to your Git-ignored local `terraform.tfvars`:
+These commands run on **local Ubuntu WSL** (`root@Seryoga-MC`), NOT on the Proxmox host or inside VM 100/101. The older `~/terraform-smoke-test` and this repository have **different Terraform states** and must not be mixed.
 
-   ```bash
-   cp terraform.tfvars.example terraform.tfvars
-   ```
+### 1. Update the files and validate
 
-2. **Before enabling `create_vm`**, verify that VM ID `101` is still free and approved, and that `10.10.10.21/24` is available and approved. It is only a **proposed** guest address; the working VM 100 uses `10.10.10.20/24`. Confirm group quotas and sufficient space on shared `local` storage.
-3. Create/select a local SSH key pair; set `ssh_public_key_path` to the **public** key file on the Terraform client. The example `~/.ssh/id_ed25519.pub` must exist before planning with `create_vm=true`. **Never commit SSH private keys, API tokens or a `terraform.tfvars` containing secrets.**
-4. Supply the token and endpoint securely via shell environment variables (do not put them in `.tf` files):
+~~~bash
+cd ~/german-job-market-analytics
+git fetch origin
+git switch docs/infrastructure-readme-update
+git pull --ff-only
+cd infrastructure/terraform
+terraform init
+terraform fmt -check
+terraform validate
+~~~
 
-   ```bash
-   export PROXMOX_VE_ENDPOINT="https://195.154.103.231:8006/"
-   # Set PROXMOX_VE_API_TOKEN securely in your local shell (do not echo it).
-   ```
+We tested with Terraform v1.17.1 and `bpg/proxmox v0.120.0`. Validation passed without warnings after the old, deprecated cloud-image resource was replaced with `proxmox_download_file`.
 
-   Use the **authentic, verified** Proxmox CA certificate already accessible from WSL as `/etc/pve/pve-root-ca.pem`:
+### 2. Set API endpoint, TLS CA and token (per shell session)
 
-   ```bash
-   export SSL_CERT_FILE=/etc/pve/pve-root-ca.pem
-   ```
+We confirmed the Proxmox certificate is issued by its own CA and includes the server IP `195.154.103.231`. Our WSL environment contains a trusted, authentic CA copy at `/etc/pve/pve-root-ca.pem`; verify the CA's authenticity through a trusted channel before use. Do not disable certificate verification or send credentials with `curl -k`.
 
-5. With `create_vm = false`, test the local configuration without provisioning:
+~~~bash
+export PROXMOX_VE_ENDPOINT="https://195.154.103.231:8006/"
+export SSL_CERT_FILE=/etc/pve/pve-root-ca.pem
 
-   ```bash
-   terraform init
-   terraform fmt -check
-   terraform validate
-   terraform plan
-   ```
+# Read the token secret without displaying it or saving it in shell history:
+read -rsp "Proxmox token secret: " TOKEN_SECRET
+echo
+export PROXMOX_VE_API_TOKEN='root1@pve!terraform='"$TOKEN_SECRET"
+unset TOKEN_SECRET
+~~~
 
-6. Once the image, resource quotas, IP and permissions are verified, set `create_vm = true` in your **local** `terraform.tfvars`, inspect `terraform plan`, and only then consider `terraform apply`.
+The **token ID** is `root1@pve!terraform`; the secret is a separate private value. Do not echo, commit, or paste the secret into issue trackers or chat.
 
-   The token has successfully created a disk-backed Ubuntu VM 101 after VM, datastore and SDN permissions were configured. The VM booted to the Ubuntu console login prompt; **we have not yet verified Cloud-Init from inside the guest or installed k3s on the new VM**. Do not bypass permission failures with global administrator privileges.
+A read-only authenticated API check (we received `HTTP status: 200`):
+
+~~~bash
+curl --cacert /etc/pve/pve-root-ca.pem \
+  --silent --show-error --output /dev/null \
+  --write-out 'HTTP status: %{http_code}\n' \
+  --header "Authorization: PVEAPIToken=$PROXMOX_VE_API_TOKEN" \
+  "$PROXMOX_VE_ENDPOINT"api2/json/nodes
+~~~
+
+This confirms API authentication and read access, **not** the permissions needed for VM disks or SDN networks.
+
+### 3. Generate a guest SSH public key (once)
+
+Our WSL root account initially had no key pair, so we ran:
+
+~~~bash
+ls -la ~/.ssh/
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -C "liora-terraform"
+ls -l ~/.ssh/id_ed25519.pub
+~~~
+
+Use a passphrase. The private key `~/.ssh/id_ed25519` (permission `600`) stays private on WSL. Terraform uses the public key `~/.ssh/id_ed25519.pub` (permission `644`) in Cloud-Init. Never commit the private key.
+
+### 4. Configure local variables
+
+~~~bash
+cd ~/german-job-market-analytics/infrastructure/terraform
+test -f terraform.tfvars || cp terraform.tfvars.example terraform.tfvars
+nano terraform.tfvars
+~~~
+
+The settings actually used for our Ubuntu VM 101:
+
+~~~hcl
+create_vm            = true
+node_name            = "B2C-DevOps-Inter-Bootcamp-SEP26-group-5"
+vm_id                = 101
+vm_name              = "job-market-ubuntu-101"
+cpu_cores            = 2
+cpu_type             = "x86-64-v2-AES"
+memory_mb            = 4096
+disk_gb              = 16
+datastore_id         = "local"
+network_bridge       = "nat0"
+vm_ipv4_cidr         = "10.10.10.21/24"
+vm_gateway           = "10.10.10.1"
+dns_servers          = ["1.1.1.1", "8.8.8.8"]
+vm_username          = "group3"
+ssh_public_key_path  = "~/.ssh/id_ed25519.pub"
+download_cloud_image = false
+cloud_image_file_id  = "local:import/job-market-noble-server-cloudimg-amd64.qcow2"
+~~~
+
+**Before provisioning:** verify that the VM ID is free, that `10.10.10.21` is not assigned elsewhere **and** approved for the project, and that Liora allows the planned allocation on the shared datastore. An unanswered ping is not proof that an IP is available.
+
+**Critical Terraform state rule:** `terraform.tfvars.example` sets `create_vm = false` to prevent accidental first-time provisioning. When you have a **live VM 101 managed by this Terraform state**, leave `create_vm = true` in the **local** `terraform.tfvars`. Changing it to `false` and applying would propose **destroying VM 101**. Do not rely on a one-time CLI override and then forget it.
+
+### 5. Create and apply an exact reviewed plan
+
+~~~bash
+terraform init
+terraform fmt -check
+terraform validate
+terraform plan -out=vm101.tfplan
+~~~
+
+Inspect the output: the successful plan had **one VM added**, with boot disk imported from our staged Cloud Image, static networking and a Cloud-Init user account. It showed no changes to existing VM 100:
+
+~~~text
+Plan: 1 to add, 0 to change, 0 to destroy.
+~~~
+
+After reviewing the plan:
+
+~~~bash
+terraform apply vm101.tfplan
+~~~
+
+Successful result from our real VM 101 deployment:
+
+~~~text
+proxmox_virtual_environment_vm.k3s[0]: Creation complete after 6s [id=101]
+Apply complete! Resources: 1 added, 0 changed, 0 destroyed.
+managed_vm_id = 101
+managed_vm_ipv4 = "10.10.10.21/24"
+managed_vm_name = "job-market-ubuntu-101"
+ubuntu_image_id = "local:import/job-market-noble-server-cloudimg-amd64.qcow2"
+~~~
+
+If a permission error is returned, investigate the **exact Proxmox path and privilege named in the 403**, not the Terraform syntax. Generate a fresh plan after configuration changes. Preserve the Git-ignored `terraform.tfstate` for the lifecycle of the managed VM.
+
+### 6. Verify Ubuntu in Proxmox
+
+Open **VM 101 → Console** in the Proxmox Web UI. We observed:
+
+~~~text
+Ubuntu 24.04.5 LTS job-market-ubuntu-101 tty1
+job-market-ubuntu-101 login:
+~~~
+
+The colored circles on VM 101 are **tags** (not status indicators). Cloud-Init configured user `group3` with **SSH public-key authentication**, but **no console-login password**. The Ubuntu login prompt proves successful boot, not that the private guest IP, SSH key or DNS configuration has been verified inside the VM.
+
+We still need an authorized method to reach `10.10.10.21` from WSL (VPN/jump host/etc.) or otherwise bootstrap configuration through the guest. Do not expose SSH on the shared host without permission.
 
 ## Proxmox-side setup actually performed (Web UI and host shell)
 
