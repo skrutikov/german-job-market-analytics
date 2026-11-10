@@ -4,16 +4,7 @@ This directory contains Infrastructure as Code for the Job Market Analytics proj
 It now describes **a real Ubuntu 24.04 cloud-image VM**, not a template clone.
 **The checked-in example is disabled by default:** `create_vm = false`. For the **currently deployed VM 101**, the local Git-ignored `terraform.tfvars` must keep `create_vm = true` so a routine `terraform apply` does not propose its deletion. This configuration does not manage working VM 100.
 
-## Existing environment and what has been tested (November 2026)
-
-- Existing VM **100**, created manually, runs Ubuntu 24.04, k3s, and the `dev`/`prod` namespaces. Its private address is `10.10.10.20/24`.
-- VM 100: **4 vCPUs, 16384 MiB RAM, 30 GiB QCOW2 virtual disk**, on Proxmox storage `local` (disk file actually occupied about **8.8 GiB** when checked).
-- VM 100 uses `nat0`, gateway `10.10.10.1`, DNS `1.1.1.1` and `8.8.8.8`. Node: `B2C-DevOps-Inter-Bootcamp-SEP26-group-5`.
-- The `local` datastore had about **63.06 GB total / 18.38 GB used** at the last check. That is shared capacity, **not an allocation for this group**.
-- `terraform init`, `terraform fmt -check` and `terraform validate` previously passed for the **original scaffold** with Terraform v1.17.1 and `bpg/proxmox v0.120.0`.
-- HTTPS/TLS with `/etc/pve/pve-root-ca.pem`, API-token authentication (HTTP 200), and **read-only Terraform API data-source access** were verified.
-- An isolated `~/terraform-smoke-test` directory successfully created and destroyed an **empty VM 101**. Subsequently, using **this repository's Terraform configuration**, we successfully provisioned **VM 101 with an Ubuntu Cloud Image and Cloud-Init** (`Apply complete! Resources: 1 added, 0 changed, 0 destroyed`). The Proxmox console displayed **Ubuntu 24.04.5 LTS** at the login prompt. Guest SSH, static IP, and full Cloud-Init completion have **not yet been verified from inside the VM**.
-- The Ansible playbook in `../ansible/` has been run locally on VM 100 and was idempotent on repeated runs. **A fresh k3s installation using Ansible has not yet been tested.**
+**Verified:** Terraform created VM 101 from the pre-staged Ubuntu Cloud Image (Ubuntu 24.04.5 booted successfully). Cloud-Init networking/SSH access inside the guest and a fresh Ansible run are still pending. The working manually provisioned VM 100 continues to run k3s.
 
 ## What this configuration creates
 
@@ -30,22 +21,6 @@ When explicitly enabled, Terraform provisions a **separate Ubuntu VM** from an U
 **What it does not yet do:** install Ansible or k3s inside the new guest, run the existing playbook automatically, deploy the application, or set up direct network access from WSL to the private VM. Those are distinct next automation steps. This repository does **not yet** offer a tested single-command end-to-end rebuild.
 
 The example temporary VM uses **2 vCPUs, 4096 MiB RAM and a 16 GiB virtual disk**. The production-sized existing VM 100 is left untouched. These values are adjustable in `terraform.tfvars`.
-
-## Cloud-image prerequisite: choose one method
-
-The existing `ubuntu-24.04.5-live-server-amd64.iso` is an **installation ISO**, **not** a Cloud Image. We subsequently downloaded and verified the proper Ubuntu Cloud Image on Proxmox; see the setup runbook below.
-
-**Option A — pre-stage an official image (recommended for current restricted token):**
-
-1. Ask an authorized Proxmox operator to stage the official Ubuntu 24.04 amd64 cloud-image QCOW2 on the already approved `local` datastore as `local:import/job-market-noble-server-cloudimg-amd64.qcow2`. The source image is `https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img`; use a pinned version and verify its official checksum for a fully reproducible setup.
-2. Confirm the imported file exists (e.g. `pvesm list local --content import` on the Proxmox host). The `local` storage supports **Import** content, as verified in the Proxmox UI and by the successful download.
-3. Keep `download_cloud_image = false` and set `cloud_image_file_id` to the actual Proxmox image ID. Terraform uses the staged file without uploading a snippet or requiring host SSH from WSL.
-
-**Option B — Terraform downloads the official image:**
-
-Set `download_cloud_image = true` so Terraform manages `proxmox_download_file.ubuntu_cloud_image`. The download uses Proxmox's `download-url` API and the storage's **Import** content type. It requires additional storage and node privileges (including `Datastore.AllocateTemplate`, `Sys.Audit`, and `Sys.Modify`) beyond the narrowly scoped VM 101 ACL. **Do not grant broad permissions or change shared host settings without Liora's approval.** The managed image may be removed from storage on a subsequent `terraform destroy`.
-
-For the provider's native approach, see the [cloud-image guide](https://bpg.sh/docs/guides/cloud-image/) and [cloud-init guide](https://bpg.sh/docs/guides/cloud-init/).
 
 ## Proxmox-side setup actually performed (Web UI and host shell)
 
@@ -101,6 +76,12 @@ cloud_image_file_id  = "local:import/job-market-noble-server-cloudimg-amd64.qcow
 ~~~
 
 This avoids requiring the restricted Terraform token to download files on the Proxmox host. The image remains available for subsequent recreations. For reproducibility, pin a specific Ubuntu image release and verify its official checksum rather than relying indefinitely on the moving `noble/current` URL.
+
+### Optional alternative: let Terraform download the image
+
+Our working setup uses the pre-staged image with `download_cloud_image = false`; **nothing needs to be downloaded again to recreate the VM**. If an authorized operator later wants Terraform to manage the image download as well, set `download_cloud_image = true` to use `proxmox_download_file.ubuntu_cloud_image`. The provider's download-url API requires additional storage and node permissions. We **did not test this alternative**; do not grant broad host permissions on the shared server just for this convenience.
+
+Provider references: [Cloud Image guide](https://bpg.sh/docs/guides/cloud-image/) and [Cloud-Init guide](https://bpg.sh/docs/guides/cloud-init/).
 
 ### Proxmox API token and scoped permissions (Web UI)
 
