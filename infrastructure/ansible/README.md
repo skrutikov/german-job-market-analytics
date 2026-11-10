@@ -1,6 +1,6 @@
-# Group 3 k3s configuration with Ansible
+# k3s configuration with Ansible
 
-This playbook configures the **existing** Group 3 Ubuntu VM (`group3-ubuntu01`, `10.10.10.20`), **not** the shared Proxmox host. It provides a repeatable installation/configuration procedure for a single-node k3s cluster.
+This playbook configures the **existing** Ubuntu VM (`group3-ubuntu01`, `10.10.10.20`), **not** the shared Proxmox host. It provides a repeatable installation/configuration procedure for a single-node k3s cluster.
 
 ## Current tested setup (November 2026)
 
@@ -30,7 +30,7 @@ The playbook does not manage Proxmox host networking or storage, create VMs, dep
 
 The VM's `10.10.10.20` address is on a private network **not directly reachable from our Ubuntu WSL environment**. Therefore our tested approach runs Ansible on the VM itself using `ansible_connection=local`, without SSH.
 
-Open **Proxmox Web UI → Group 3 Ubuntu VM → Console** (or log into the VM through another approved method), and use the `group3` account with sudo privileges.
+Open **Proxmox Web UI → Ubuntu VM → Console** (or log into the VM through another approved method), and use the `group3` account with sudo privileges.
 
 Install prerequisites if not already present:
 
@@ -94,6 +94,6 @@ Do not expose SSH ports on the shared Proxmox host or change host-level networki
 
 ## Safety and scope
 
-- Target only Group 3's own Ubuntu VM, never another group's VM or the Proxmox host.
+- Target only this project's Ubuntu VM, never another group's VM or the Proxmox host.
 - Keep `inventory.ini`, private SSH keys, credentials, and kubeconfigs out of Git.
 - This playbook manages k3s installation/service health and namespaces; it is **not** a complete backup, disaster recovery, or Kubernetes application deployment solution.
