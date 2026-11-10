@@ -15,5 +15,5 @@ output "managed_vm_ipv4" {
 
 output "ubuntu_image_id" {
   description = "Cloud image ID used for provisioning (may be pre-staged or downloaded)."
-  value       = var.create_vm ? (var.download_cloud_image ? proxmox_virtual_environment_download_file.ubuntu_cloud_image[0].id : var.cloud_image_file_id) : null
+  value       = var.create_vm ? (var.download_cloud_image ? proxmox_download_file.ubuntu_cloud_image[0].id : var.cloud_image_file_id) : null
 }
