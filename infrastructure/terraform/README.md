@@ -1,11 +1,11 @@
-# Group 3 Proxmox Terraform scaffold
+# Proxmox infrastructure with Terraform
 
 This directory contains infrastructure-as-code for the Liora DataOps project.
 It defines **optional** Proxmox VM provisioning, but is deliberately **non-provisioning by default**: `create_vm = false`.
 
 ## Current infrastructure (November 2026)
 
-Our Group 3 VM was created **manually in the Proxmox Web UI**, not by Terraform.
+The project's Ubuntu VM was created **manually in the Proxmox Web UI**, not by Terraform.
 
 - Ubuntu 24.04 VM: `group3-ubuntu01`, IPv4 `10.10.10.20/24`, default gateway `10.10.10.1`.
 - Allocated resources: **4 vCPUs, approximately 16 GB RAM, 30 GB virtual disk** (approximately 28 GB root filesystem).
@@ -40,11 +40,11 @@ The provider was downloaded and the configuration validated. **We have not verif
 
 The generated `.terraform.lock.hcl` is committed to the repository to record the selected provider dependency.
 
-## Before any live provisioning
+## Optional: provisioning an additional VM
 
-Confirm with Liora:
+The existing VM is operational; **none of the following is required to continue deploying the application**. If an additional VM is needed later, confirm with Liora:
 
-- Approved Proxmox node, storage/datastore, group resource quota, and a unique VM ID.
+- Approved Proxmox node, storage/datastore, resource quota, and a unique VM ID.
 - Approved bridge/VLAN and IP addressing (including DHCP versus static IP).
 - An approved, clonable cloud-init template.
 - Whether a suitably scoped Proxmox API token is available and permitted.
