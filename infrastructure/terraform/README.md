@@ -26,9 +26,9 @@ The project's Ubuntu VM was created **manually in the Proxmox Web UI**, not by T
 
 The example clone configuration uses DHCP and is **not a description of the existing VM's static IP configuration**.
 
-## Validation completed
+## Validation completed (November 2026)
 
-The following commands were successfully executed in local Ubuntu WSL using Terraform v1.17.1:
+The following commands succeeded in local Ubuntu WSL using Terraform v1.17.1:
 
 ```bash
 terraform init
@@ -36,9 +36,34 @@ terraform fmt -check
 terraform validate
 ```
 
-The provider was downloaded and the configuration validated. **We have not verified a Proxmox API connection, performed VM provisioning with Terraform, or run `terraform apply`.** A successful `validate` does not establish that the configured VM would be provisioned successfully.
+**Live Proxmox API access has now been verified.** From WSL:
 
-The generated `.terraform.lock.hcl` is committed to the repository to record the selected provider dependency.
+- HTTPS access to the Proxmox API on port `8006` succeeded.
+- The server's internal CA certificate, available locally as `/etc/pve/pve-root-ca.pem`, enabled TLS verification **without disabling certificate checks**.
+- An authenticated, **read-only** `GET /api2/json/nodes` request using the API token returned HTTP `200`.
+- Terraform successfully queried live Proxmox nodes using a temporary `proxmox_virtual_environment_nodes` data source. Its `terraform plan` returned the node name `B2C-DevOps-Inter-Bootcamp-SEP26-group-5` as a proposed **output-only** change, with no infrastructure changes.
+
+The temporary Terraform verification configuration was:
+
+```hcl
+data "proxmox_virtual_environment_nodes" "live" {}
+
+output "proxmox_node_names" {
+  value = data.proxmox_virtual_environment_nodes.live.names
+}
+```
+
+It was tested with:
+
+```bash
+SSL_CERT_FILE=/etc/pve/pve-root-ca.pem terraform plan
+```
+
+This diagnostic data source is **not part of the committed provisioning configuration**. Remove the temporary `verify-proxmox.tf` test file after testing, if it is still present locally.
+
+**Scope of validation:** Terraform can authenticate and read live Proxmox data, but we have **not** run `terraform apply`, provisioned a VM, imported the existing VM, or verified the token's permissions to create/clone VMs. A successful read-only query does not prove that provisioning would succeed.
+
+The generated `.terraform.lock.hcl` is committed to record the selected provider dependency.
 
 ## Optional: provisioning an additional VM
 
@@ -47,7 +72,7 @@ The existing VM is operational; **none of the following is required to continue 
 - Approved Proxmox node, storage/datastore, resource quota, and a unique VM ID.
 - Approved bridge/VLAN and IP addressing (including DHCP versus static IP).
 - An approved, clonable cloud-init template.
-- Whether a suitably scoped Proxmox API token is available and permitted.
+- Whether the working API token also has the permissions needed to **create or clone VMs** (only read permissions have been tested).
 
 The server is shared with another group. **Do not change Proxmox host networks, storage, firewall settings, or other groups' resources.**
 
@@ -61,7 +86,7 @@ The server is shared with another group. **Do not change Proxmox host networks, 
    export PROXMOX_VE_API_TOKEN="YOUR_SCOPED_API_TOKEN"
    ```
 
-   Do not commit credentials. Use a trusted TLS certificate rather than disabling certificate verification.
+   Do not commit credentials. The Proxmox CA certificate used during our successful test was available in WSL as `/etc/pve/pve-root-ca.pem`. Verify its provenance and authenticity before trusting it; do not disable TLS verification. For Terraform commands that connect to Proxmox, set `SSL_CERT_FILE=/etc/pve/pve-root-ca.pem` as shown above.
 3. Copy `terraform.tfvars.example` to `terraform.tfvars` and enter only approved values. The latter is ignored by Git.
 4. Check the configuration:
 
