@@ -2,7 +2,7 @@
 
 This directory contains Infrastructure as Code for the Job Market Analytics project.
 It now describes **a real Ubuntu 24.04 cloud-image VM**, not a template clone.
-**Provisioning is disabled by default:** `create_vm = false`. This is for a **new** VM (initial test target: 101), not the working VM 100.
+**The checked-in example is disabled by default:** `create_vm = false`. For the **currently deployed VM 101**, the local Git-ignored `terraform.tfvars` must keep `create_vm = true` so a routine `terraform apply` does not propose its deletion. This configuration does not manage working VM 100.
 
 ## Existing environment and what has been tested (November 2026)
 
@@ -46,6 +46,96 @@ The existing `ubuntu-24.04.5-live-server-amd64.iso` is an **installation ISO**, 
 Set `download_cloud_image = true` so Terraform manages `proxmox_download_file.ubuntu_cloud_image`. The download uses Proxmox's `download-url` API and the storage's **Import** content type. It requires additional storage and node privileges (including `Datastore.AllocateTemplate`, `Sys.Audit`, and `Sys.Modify`) beyond the narrowly scoped VM 101 ACL. **Do not grant broad permissions or change shared host settings without Liora's approval.** The managed image may be removed from storage on a subsequent `terraform destroy`.
 
 For the provider's native approach, see the [cloud-image guide](https://bpg.sh/docs/guides/cloud-image/) and [cloud-init guide](https://bpg.sh/docs/guides/cloud-init/).
+
+## Proxmox-side setup actually performed (Web UI and host shell)
+
+The procedures below document the **successful November 2026 provisioning of Ubuntu VM 101**. The Proxmox host is shared: keep all changes scoped to the instructor-authorized VM, datastore and network.
+
+### Inspect the available resources (Proxmox HOST shell)
+
+These are **read-only Proxmox host** commands, not commands for local Ubuntu WSL:
+
+~~~bash
+pvesm status
+qm list
+qm config 100
+ip -br addr show nat0
+pvesm list local --content iso
+pvesm list local --content import
+~~~
+
+The existing VM 100 uses a 30 GiB QCOW2 disk on `local` and the `nat0` network, with gateway `10.10.10.1/24`. We checked the disk's physical usage with:
+
+~~~bash
+du -h /var/lib/vz/images/100/vm-100-disk-0.qcow2
+~~~
+
+It used ~8.8 GiB of host storage at the time. The `local` datastore showed ~63.06 GB total and ~18.38 GB used. **Free server space is not the group's approved quota.** Confirm CPU/RAM/storage and IP allocations with Liora before adding VMs.
+
+### Download the Ubuntu Cloud Image (Proxmox Web UI)
+
+**Done:** select **local → Import → Download from URL**. Verify that **Datacenter → Storage → local** permits **Import** content (do not change shared storage settings without authorization).
+
+- URL: `https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img`
+- Destination filename: `job-market-noble-server-cloudimg-amd64.qcow2`
+
+The `.img` source is a QCOW2-formatted Cloud Image. The actual download reported **621284352 bytes (~593 MiB)** and completed successfully.
+
+On the **Proxmox host**, verify:
+
+~~~bash
+pvesm list local --content import
+~~~
+
+Our actual result was:
+
+~~~text
+local:import/job-market-noble-server-cloudimg-amd64.qcow2 qcow2 import 621284352
+~~~
+
+Terraform then uses the pre-staged image:
+
+~~~hcl
+download_cloud_image = false
+cloud_image_file_id  = "local:import/job-market-noble-server-cloudimg-amd64.qcow2"
+~~~
+
+This avoids requiring the restricted Terraform token to download files on the Proxmox host. The image remains available for subsequent recreations. For reproducibility, pin a specific Ubuntu image release and verify its official checksum rather than relying indefinitely on the moving `noble/current` URL.
+
+### Proxmox API token and scoped permissions (Web UI)
+
+**Datacenter → Permissions → API Tokens**: token ID `root1@pve!terraform`, with **Privilege Separation = Yes**. Never commit, display or share the token *secret*. With separation enabled, effective rights cannot exceed those of the parent user `root1@pve`.
+
+Under **Datacenter → Permissions → Add → API Token Permission**, the following permissions were needed to provision **VM 101**:
+
+| Path | Token | Role | Why |
+| --- | --- | --- | --- |
+| `/vms/101` | `root1@pve!terraform` | `PVEVMAdmin` | Allocate, configure, start and delete that VM |
+| `/storage/local` | same | `PVEDatastoreUser` | Allow disk / Cloud-Init allocation (`Datastore.AllocateSpace`) |
+| `/sdn/zones/studnat/nat0` | same | `PVESDNUser` | Allow NIC use of the existing VNet (`SDN.Use`) |
+
+The VM path `/vms/101` can be typed directly, even if the VM does not exist yet. **Do not assign PVEVMAdmin on `/vms` or Administrator on `/`.** Storage rights on `/storage/local` are broader because this datastore is shared, so require the instructor's authorization. Do not grant network administration privileges just to use an existing VNet.
+
+Verify with these **Proxmox HOST** commands:
+
+~~~bash
+pveum user token permissions root1@pve terraform
+pveum user permissions root1@pve
+pveum role list
+qm list
+~~~
+
+**Important lifecycle trap observed:** destroying VM 101 also removed the token's ACL on `/vms/101`. We had to reassign that ACL before creating VM 101 again. A dedicated resource pool with properly scoped permissions may provide a durable solution for repeated rebuilds; get Liora's permission before adopting it.
+
+### Actual 403 failures and resolutions
+
+| Error | Actual missing privilege / action |
+| --- | --- |
+| `HTTP 403 Permission check failed` when creating an empty VM | Add approved VM permissions for `/vms/101` |
+| `403 (/storage/local, Datastore.AllocateSpace)` | Allow allocation on `local` for the token, with approved `PVEDatastoreUser` |
+| `403 (/sdn/zones/studnat/nat0, SDN.Use)` | Permit use of VNet `nat0`, with `PVESDNUser` on the exact VNet path |
+
+These failures were authorization checks, not Terraform syntax problems. Recheck `qm list` after failed creation attempts to ensure no partially created VM exists before retrying.
 
 ## Local Ubuntu WSL — complete command sequence
 
@@ -188,96 +278,6 @@ The colored circles on VM 101 are **tags** (not status indicators). Cloud-Init c
 
 We still need an authorized method to reach `10.10.10.21` from WSL (VPN/jump host/etc.) or otherwise bootstrap configuration through the guest. Do not expose SSH on the shared host without permission.
 
-## Proxmox-side setup actually performed (Web UI and host shell)
-
-The procedures below document the **successful November 2026 provisioning of Ubuntu VM 101**. The Proxmox host is shared: keep all changes scoped to the instructor-authorized VM, datastore and network.
-
-### Inspect the available resources (Proxmox HOST shell)
-
-These are **read-only Proxmox host** commands, not commands for local Ubuntu WSL:
-
-~~~bash
-pvesm status
-qm list
-qm config 100
-ip -br addr show nat0
-pvesm list local --content iso
-pvesm list local --content import
-~~~
-
-The existing VM 100 uses a 30 GiB QCOW2 disk on `local` and the `nat0` network, with gateway `10.10.10.1/24`. We checked the disk's physical usage with:
-
-~~~bash
-du -h /var/lib/vz/images/100/vm-100-disk-0.qcow2
-~~~
-
-It used ~8.8 GiB of host storage at the time. The `local` datastore showed ~63.06 GB total and ~18.38 GB used. **Free server space is not the group's approved quota.** Confirm CPU/RAM/storage and IP allocations with Liora before adding VMs.
-
-### Download the Ubuntu Cloud Image (Proxmox Web UI)
-
-**Done:** select **local → Import → Download from URL**. Verify that **Datacenter → Storage → local** permits **Import** content (do not change shared storage settings without authorization).
-
-- URL: `https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img`
-- Destination filename: `job-market-noble-server-cloudimg-amd64.qcow2`
-
-The `.img` source is a QCOW2-formatted Cloud Image. The actual download reported **621284352 bytes (~593 MiB)** and completed successfully.
-
-On the **Proxmox host**, verify:
-
-~~~bash
-pvesm list local --content import
-~~~
-
-Our actual result was:
-
-~~~text
-local:import/job-market-noble-server-cloudimg-amd64.qcow2 qcow2 import 621284352
-~~~
-
-Terraform then uses the pre-staged image:
-
-~~~hcl
-download_cloud_image = false
-cloud_image_file_id  = "local:import/job-market-noble-server-cloudimg-amd64.qcow2"
-~~~
-
-This avoids requiring the restricted Terraform token to download files on the Proxmox host. The image remains available for subsequent recreations. For reproducibility, pin a specific Ubuntu image release and verify its official checksum rather than relying indefinitely on the moving `noble/current` URL.
-
-### Proxmox API token and scoped permissions (Web UI)
-
-**Datacenter → Permissions → API Tokens**: token ID `root1@pve!terraform`, with **Privilege Separation = Yes**. Never commit, display or share the token *secret*. With separation enabled, effective rights cannot exceed those of the parent user `root1@pve`.
-
-Under **Datacenter → Permissions → Add → API Token Permission**, the following permissions were needed to provision **VM 101**:
-
-| Path | Token | Role | Why |
-| --- | --- | --- | --- |
-| `/vms/101` | `root1@pve!terraform` | `PVEVMAdmin` | Allocate, configure, start and delete that VM |
-| `/storage/local` | same | `PVEDatastoreUser` | Allow disk / Cloud-Init allocation (`Datastore.AllocateSpace`) |
-| `/sdn/zones/studnat/nat0` | same | `PVESDNUser` | Allow NIC use of the existing VNet (`SDN.Use`) |
-
-The VM path `/vms/101` can be typed directly, even if the VM does not exist yet. **Do not assign PVEVMAdmin on `/vms` or Administrator on `/`.** Storage rights on `/storage/local` are broader because this datastore is shared, so require the instructor's authorization. Do not grant network administration privileges just to use an existing VNet.
-
-Verify with these **Proxmox HOST** commands:
-
-~~~bash
-pveum user token permissions root1@pve terraform
-pveum user permissions root1@pve
-pveum role list
-qm list
-~~~
-
-**Important lifecycle trap observed:** destroying VM 101 also removed the token's ACL on `/vms/101`. We had to reassign that ACL before creating VM 101 again. A dedicated resource pool with properly scoped permissions may provide a durable solution for repeated rebuilds; get Liora's permission before adopting it.
-
-### Actual 403 failures and resolutions
-
-| Error | Actual missing privilege / action |
-| --- | --- |
-| `HTTP 403 Permission check failed` when creating an empty VM | Add approved VM permissions for `/vms/101` |
-| `403 (/storage/local, Datastore.AllocateSpace)` | Allow allocation on `local` for the token, with approved `PVEDatastoreUser` |
-| `403 (/sdn/zones/studnat/nat0, SDN.Use)` | Permit use of VNet `nat0`, with `PVESDNUser` on the exact VNet path |
-
-These failures were authorization checks, not Terraform syntax problems. Recheck `qm list` after failed creation attempts to ensure no partially created VM exists before retrying.
-
 ## Bootstrapping k3s with Ansible (next milestone)
 
 The existing `../ansible/install-k3s.yml` playbook installs k3s on a fresh Ubuntu host and maintains `dev`/`prod` namespaces. Repeated runs on the existing VM were idempotent, but its fresh-install branch is untested.
@@ -287,6 +287,18 @@ Because WSL cannot directly reach `10.10.10.0/24`, Ansible has so far been invok
 **One-command deployment is a future improvement:** it needs an approved way to deliver/run the playbook in the guest (such as an authorized SSH jump host, or custom Cloud-Init snippets). Custom snippets require `Snippets` storage support and provider SFTP/SSH access to the Proxmox node; that is **not configured** on the current shared storage. Do not enable it without approval.
 
 ## Cleanup and safety
+
+VM 101 is currently managed by the Terraform state **in this repository directory**. Destroy the VM **only when you intentionally want to remove it**, and review the full plan first (from WSL with credentials and `SSL_CERT_FILE` available):
+
+~~~bash
+cd ~/german-job-market-analytics/infrastructure/terraform
+terraform state list
+terraform plan -destroy
+# After confirming the planned deletions affect only this Terraform-managed test VM:
+terraform destroy
+~~~
+
+If using the pre-staged image (`download_cloud_image = false`), the original Cloud Image on `local` is **not** Terraform-managed and remains available for a rebuild. Verify VM 101 was removed with `qm list` on the Proxmox host. Do not delete `terraform.tfstate` until teardown has succeeded; when the VM is intentionally destroyed, its `/vms/101` ACL may also be removed, so restoring the specific ACL or arranging a dedicated permitted pool may be necessary before recreating it.
 
 - VM 100 is **not imported or managed**. The new VM resource rejects VM ID `100` and the existing IP `10.10.10.20/24`.
 - Use a **separate state** from `~/terraform-smoke-test`. Never mix two independently managed resources targeting the same VM ID.
