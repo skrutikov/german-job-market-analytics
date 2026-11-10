@@ -1,56 +1,99 @@
 # Group 3 k3s configuration with Ansible
 
-This playbook configures the **existing** Group 3 Ubuntu VM, not the shared Proxmox host.
-It is designed to be run from a workstation such as Ubuntu WSL over SSH.
+This playbook configures the **existing** Group 3 Ubuntu VM (`group3-ubuntu01`, `10.10.10.20`), **not** the shared Proxmox host. It provides a repeatable installation/configuration procedure for a single-node k3s cluster.
 
-## What it does
+## Current tested setup (November 2026)
+
+- The VM runs Ubuntu 24.04, with **4 vCPUs, approximately 16 GB RAM, and a 30 GB virtual disk**.
+- k3s `v1.36.5+k3s1` was **initially installed manually** and has been verified `Ready`.
+- The Ansible playbook was subsequently run **locally on the Proxmox VM** through its console.
+- A local inventory worked and the live run completed without failures.
+- Repeated live runs reported **`changed=0`, `failed=0`** (idempotency verified).
+- The `dev` and `prod` namespaces are created/maintained by `files/namespaces.yaml`.
+
+We did **not** test a fresh k3s installation with Ansible. The installer branch of the playbook remains unverified on a clean VM.
+
+## What the playbook does
 
 - Confirms the target is Ubuntu on amd64.
 - Installs **k3s v1.36.5+k3s1** only if `/usr/local/bin/k3s` is absent.
-- Enables and starts the `k3s` systemd service without restarting a running service.
+- Ensures the k3s systemd service is enabled and running, without restarting an already-running service.
 - Waits for the Kubernetes node to be Ready.
-- Declaratively applies the `dev` and `prod` namespace manifests.
-- Reports the Kubernetes node status.
+- Applies declarative manifests for the `dev` and `prod` namespaces.
+- Displays the Kubernetes node status.
 
-**Existing k3s installations are not reinstalled or upgraded.** The version variable pins *new* installs only. The script is downloaded from the official k3s installation endpoint; review this script and your organization's execution policy before using on a new machine.
+Existing k3s installations are **not reinstalled or upgraded**. The version setting pins only *new* installations. The installer is downloaded from the official k3s endpoint; review it before executing on any fresh machine.
 
-The playbook does not manage Proxmox host networking, create VMs, install application services, change Kubernetes ingress defaults or change cluster configuration flags.
+The playbook does not manage Proxmox host networking or storage, create VMs, deploy the Job Market Analytics application, or configure Kubernetes ingress.
 
-## Prerequisites
+## Run locally on the existing Proxmox VM (tested approach)
 
-- Ansible installed on the control machine (Ubuntu WSL is suitable).
-- SSH access from the control machine to the VM at `10.10.10.20`.
-- The `group3` SSH account has sudo permissions.
-- Network/DNS access on the VM for a fresh k3s installation.
-- The VM belongs to Group 3 and has sufficient allocated resources.
+The VM's `10.10.10.20` address is on a private network **not directly reachable from our Ubuntu WSL environment**. Therefore our tested approach runs Ansible on the VM itself using `ansible_connection=local`, without SSH.
 
-## Run from Ubuntu WSL
+Open **Proxmox Web UI → Group 3 Ubuntu VM → Console** (or log into the VM through another approved method), and use the `group3` account with sudo privileges.
 
-From the repository root:
+Install prerequisites if not already present:
 
 ```bash
-git switch ansible
+sudo apt update
+sudo apt install -y ansible git
+```
+
+Use the current merged `main` branch of the existing clone:
+
+```bash
+cd ~/german-job-market-analytics
+git switch main
+git pull origin main
 cd infrastructure/ansible
-cp inventory.example.ini inventory.ini
+```
+
+If the repository has not yet been cloned, clone it first from GitHub.
+
+Create a **local, Git-ignored** inventory (`inventory.ini`):
+
+```bash
+printf '[k3s_servers]\nlocalhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3\n' > inventory.ini
+```
+
+Run the connection check and optional preliminary dry run:
+
+```bash
 ansible -i inventory.ini k3s_servers -m ping
-ansible-playbook -i inventory.ini install-k3s.yml --check --diff
+ansible-playbook -i inventory.ini install-k3s.yml --check --diff --ask-become-pass
+```
+
+Run the playbook:
+
+```bash
 ansible-playbook -i inventory.ini install-k3s.yml --ask-become-pass
 ```
 
-If SSH uses a key, configure it through your SSH agent or an entry in `~/.ssh/config`. If your user has passwordless sudo, omit `--ask-become-pass`. Ansible might require `--ask-pass` for password-based SSH authentication, although SSH keys are recommended.
+The `--ask-become-pass` flag prompts for the Ubuntu user's sudo password on every invocation. If sudo authentication is already cached, the playbook also works without the flag:
 
-**Note:** Ansible check mode does not accurately simulate command-module operations or a fresh install. On the existing k3s VM, use the first actual run to validate behavior, then run it a second time: the second run should report no changes unless something drifted.
+```bash
+ansible-playbook -i inventory.ini install-k3s.yml
+```
 
-After completion, verify from the VM:
+If that command fails because a sudo password is required, rerun with `--ask-become-pass`. We did **not** enable passwordless sudo; the `group3` account has ordinary sudo permissions. Do not change sudo policies for convenience.
+
+**Check mode limitation:** Command tasks cannot fully simulate a fresh installation, and some are skipped in check mode. The important checks are the first real execution and a repeat execution that should report `changed=0` when the system has not drifted.
+
+Verify the cluster afterward:
 
 ```bash
 sudo k3s kubectl get nodes
 sudo k3s kubectl get namespaces
 ```
 
-## Safety
+## Optional remote execution (not tested from WSL)
 
-- Do **not** point the inventory at the shared Proxmox host or another group's VM.
-- Do not commit SSH passwords, private keys, kubeconfig files or API tokens.
-- The playbook preserves an existing installation, but it is not a full cluster disaster-recovery or backup solution.
-- Running it does modify the VM and Kubernetes namespaces. Run only against an authorized host.
+`inventory.example.ini` contains the intended SSH inventory for remote Ansible execution. Use it **only if** Liora provides an approved VPN, route, or SSH gateway to the VM's private network. A working Proxmox browser console and outbound internet access **do not** imply that WSL can directly SSH to `10.10.10.20`.
+
+Do not expose SSH ports on the shared Proxmox host or change host-level networking to work around this limitation.
+
+## Safety and scope
+
+- Target only Group 3's own Ubuntu VM, never another group's VM or the Proxmox host.
+- Keep `inventory.ini`, private SSH keys, credentials, and kubeconfigs out of Git.
+- This playbook manages k3s installation/service health and namespaces; it is **not** a complete backup, disaster recovery, or Kubernetes application deployment solution.
