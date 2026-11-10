@@ -43,7 +43,7 @@ The already available `ubuntu-24.04.5-live-server-amd64.iso` is an **interactive
 
 **Option B — Terraform downloads the official image:**
 
-Set `download_cloud_image = true` so Terraform manages `proxmox_virtual_environment_download_file.ubuntu_cloud_image`. The download uses Proxmox's `download-url` API and the storage's **Import** content type. It requires additional storage and node privileges (including `Datastore.AllocateTemplate`, `Sys.Audit`, and `Sys.Modify`) beyond the narrowly scoped VM 101 ACL. **Do not grant broad permissions or change shared host settings without Liora's approval.** The managed image may be removed from storage on a subsequent `terraform destroy`.
+Set `download_cloud_image = true` so Terraform manages `proxmox_download_file.ubuntu_cloud_image`. The download uses Proxmox's `download-url` API and the storage's **Import** content type. It requires additional storage and node privileges (including `Datastore.AllocateTemplate`, `Sys.Audit`, and `Sys.Modify`) beyond the narrowly scoped VM 101 ACL. **Do not grant broad permissions or change shared host settings without Liora's approval.** The managed image may be removed from storage on a subsequent `terraform destroy`.
 
 For the provider's native approach, see the [cloud-image guide](https://bpg.sh/docs/guides/cloud-image/) and [cloud-init guide](https://bpg.sh/docs/guides/cloud-init/).
 
