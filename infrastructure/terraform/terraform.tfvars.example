@@ -1,10 +1,28 @@
-# Copy to terraform.tfvars only after Liora confirms the values.
-# terraform.tfvars is ignored by Git.
-create_vm       = false
-node_name       = "CHANGE_ME"
-template_vm_id  = 0
-vm_id           = 0
-vm_name         = "group3-k3s-01"
-network_bridge  = "vmbr0"
-cpu_cores       = 2
-memory_mb       = 4096
+# Copy to terraform.tfvars (Git-ignored). Do NOT commit real credentials.
+# This is an example for a TEMPORARY, NEW VM 101; VM 100 is not managed.
+# Verify your group's quotas, this VM ID, and 10.10.10.21 before enabling.
+create_vm           = false
+node_name           = "B2C-DevOps-Inter-Bootcamp-SEP26-group-5"
+vm_id               = 101
+vm_name             = "job-market-ubuntu-101"
+
+# Temporary lab sizing; existing VM 100 uses 4 cores, 16384 MiB, 30 GiB.
+cpu_cores           = 2
+cpu_type            = "x86-64-v2-AES"
+memory_mb           = 4096
+disk_gb             = 16
+datastore_id        = "local"
+
+network_bridge      = "nat0"
+vm_ipv4_cidr        = "10.10.10.21/24" # Proposed ONLY; confirm availability and approval
+vm_gateway          = "10.10.10.1"
+dns_servers         = ["1.1.1.1", "8.8.8.8"]
+
+vm_username         = "group3"
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+
+# false: use an approved image already staged on Proxmox.
+# true: Terraform downloads the image, requiring additional API token privileges.
+download_cloud_image = false
+cloud_image_file_id  = "local:import/job-market-noble-server-cloudimg-amd64.qcow2"
+cloud_image_url      = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
