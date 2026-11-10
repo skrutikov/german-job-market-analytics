@@ -1,46 +1,84 @@
 # Group 3 Proxmox Terraform scaffold
 
-This directory prepares infrastructure-as-code for the Liora DataOps project.
-It is deliberately **non-provisioning by default**: `create_vm = false`.
+This directory contains infrastructure-as-code for the Liora DataOps project.
+It defines **optional** Proxmox VM provisioning, but is deliberately **non-provisioning by default**: `create_vm = false`.
 
-## Important: current VM and network
+## Current infrastructure (November 2026)
 
-The existing manually created `group3-group3-ubuntu01` VM is **not** automatically imported or managed by Terraform. Do not apply Terraform to an existing VM ID without first reviewing and planning an import.
+Our Group 3 VM was created **manually in the Proxmox Web UI**, not by Terraform.
 
-The current Ubuntu VM has an IPv6 address but no IPv4 address or default IPv4 route. Terraform cannot assume or repair Liora's shared upstream networking. Ask Liora to confirm the assigned bridge/VLAN, DHCP or static IP plan, IPv4 gateway, DNS and allowed outbound internet. Do not modify Proxmox host networking or other groups' resources.
+- Ubuntu 24.04 VM: `group3-ubuntu01`, IPv4 `10.10.10.20/24`, default gateway `10.10.10.1`.
+- Allocated resources: **4 vCPUs, approximately 16 GB RAM, 30 GB virtual disk** (approximately 28 GB root filesystem).
+- Outbound IPv4, DNS resolution, and HTTPS internet access have been tested successfully.
+- A **single-node k3s v1.36.5+k3s1** cluster is installed and operational on this VM.
+- The Kubernetes node is `Ready`, and the `dev` and `prod` namespaces exist.
+- The installation/configuration is documented in `../ansible/`. Ansible was tested **locally inside the VM** and reached `changed=0` on repeat runs.
 
-## Required confirmation before provisioning
+**Terraform does not currently manage or import this existing VM.** Do not point the optional clone resource at its VM ID. Importing or managing an existing VM would require a separate reviewed plan.
 
-- Proxmox node name and group 3 VM ID allocation
-- Approved bridge/VLAN and IP configuration; whether NAT or a gateway is available
-- Group 3 resource quota, datastore and permitted VM templates
-- Whether a scoped Proxmox API token may create/clone VMs
+## What the Terraform code does
 
-## Local workflow
+- Uses the `bpg/proxmox` provider.
+- Optionally clones a **new**, Liora-approved VM template when `create_vm = true`.
+- Allows configuration of node, unique VM ID, bridge, CPU, and RAM through variables.
+- Starts the optional newly cloned VM **powered off**.
+- Does **not** configure Proxmox host networking, fix connectivity, install k3s, or deploy the application.
 
-1. Install Terraform on a workstation with network access (not necessarily the offline VM).
-2. Configure the bpg/proxmox provider using environment variables:
+The example clone configuration uses DHCP and is **not a description of the existing VM's static IP configuration**.
+
+## Validation completed
+
+The following commands were successfully executed in local Ubuntu WSL using Terraform v1.17.1:
+
+```bash
+terraform init
+terraform fmt -check
+terraform validate
+```
+
+The provider was downloaded and the configuration validated. **We have not verified a Proxmox API connection, performed VM provisioning with Terraform, or run `terraform apply`.** A successful `validate` does not establish that the configured VM would be provisioned successfully.
+
+The generated `.terraform.lock.hcl` is committed to the repository to record the selected provider dependency.
+
+## Before any live provisioning
+
+Confirm with Liora:
+
+- Approved Proxmox node, storage/datastore, group resource quota, and a unique VM ID.
+- Approved bridge/VLAN and IP addressing (including DHCP versus static IP).
+- An approved, clonable cloud-init template.
+- Whether a suitably scoped Proxmox API token is available and permitted.
+
+The server is shared with another group. **Do not change Proxmox host networks, storage, firewall settings, or other groups' resources.**
+
+## Terraform workflow (from Ubuntu WSL or another approved workstation)
+
+1. Install Terraform and open this directory.
+2. For Proxmox API operations, set credentials using local environment variables:
+
    ```bash
    export PROXMOX_VE_ENDPOINT="https://YOUR-PROXMOX-HOST:8006/"
    export PROXMOX_VE_API_TOKEN="YOUR_SCOPED_API_TOKEN"
    ```
-   Never commit tokens or credentials. Use a valid trusted TLS certificate; do not disable certificate verification merely for convenience.
-3. Copy `terraform.tfvars.example` to `terraform.tfvars` and replace placeholders with approved values.
-4. Run:
+
+   Do not commit credentials. Use a trusted TLS certificate rather than disabling certificate verification.
+3. Copy `terraform.tfvars.example` to `terraform.tfvars` and enter only approved values. The latter is ignored by Git.
+4. Check the configuration:
+
    ```bash
    terraform init
    terraform fmt -check
    terraform validate
    terraform plan
    ```
-   With `create_vm = false`, the intended plan is **no resources to add**.
-5. Only if a **new** VM is approved and a suitable cloud-init template exists, set `create_vm = true`, set its unique group 3 VM ID, verify the full plan and obtain team approval before applying.
 
-## Limitations
+   With `create_vm = false` and empty Terraform state, the intended plan is **no resources to add**. A no-change plan is not proof that authenticated Proxmox provisioning works.
+5. Only after explicit approval, select a **new** VM ID and suitable template, enable `create_vm`, inspect the complete plan, and agree on state storage/locking and a recovery procedure before `terraform apply`.
 
-- VM creation is template-based. This scaffold does not download an OS image, create an Ubuntu template, configure NAT, install k3s or deploy Kubernetes manifests.
-- It does not declare or manage the existing manually created VM.
-- The optional VM starts powered off to avoid unexpected resource usage.
-- `prevent_destroy` protects the Terraform-managed VM from accidental destroy, but this is not a backup strategy.
-- We will add Kubernetes manifests and CI/CD separately once networking and cluster design are confirmed.
-- Local Terraform state must be kept private. For teamwork, agree on a protected remote-state solution and state locking before applying.
+## Limitations and safety
+
+- The existing VM remains outside Terraform state; the current resource is intended for a **new VM only**.
+- The scaffold does not create an Ubuntu image/template, install k3s, or provide production-ready Proxmox networking.
+- `prevent_destroy` guards the optional Terraform-managed VM against routine destroy operations, but is **not** a backup strategy.
+- Terraform state can contain sensitive infrastructure details: keep local state private, and use protected shared state with locking before collaborative provisioning.
+- Kubernetes application manifests and deployment CI/CD are separate project milestones.
