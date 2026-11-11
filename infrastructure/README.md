@@ -1,17 +1,20 @@
 # Proxmox deployment
 
-Provision an Ubuntu virtual machine on Proxmox VE with **Terraform**, then configure a single-node **k3s** cluster with **Ansible**.
+This is the manual how to Provision an Ubuntu virtual machine on Proxmox VE with **Terraform**, then configure a single-node **k3s** cluster with **Ansible** as shown in the following image:
+![Infrastructure](../docs/images/infrastructure.png)
 
-Run Terraform and Ansible from the Linux machine containing this repository. The Proxmox host is the SSH jump server; the Ubuntu VM is the Ansible target.
+The Proxmox host is the SSH jump server; the Ubuntu VM is the Ansible target.
+
+Terraform and Ansible can be run from inside of this repository on the local (Linux) machine.
 
 ## Prerequisites
 
 - A running Proxmox VE host, its web interface, and **root access to the Proxmox Linux shell** (Proxmox node → Shell).
-- HTTPS access to the Proxmox API (TCP 8006) and SSH access to the host (TCP 22) from the Linux machine.
+- HTTPS access to the Proxmox API (TCP 8006) and SSH access to the host (TCP 22) from the local machine.
 - A Proxmox datastore that accepts **Import** files, an available private subnet, and permission to configure a Simple SDN zone, VNet and Source NAT (SNAT). The Proxmox host must have working outbound connectivity.
 - A free VM ID and sufficient CPU, RAM and disk capacity.
 - Installed locally: **Terraform**, **Ansible**, **OpenSSH** and **curl**.
-- This repository already present on the Linux machine.
+- This repository already present on the local machine.
 
 The commands below use these names; replace their values with those for your environment:
 
@@ -21,16 +24,15 @@ The commands below use these names; replace their values with those for your env
 - `SDN_ZONE`: identifier of the Proxmox Simple zone.
 - `SDN_VNET`: identifier of the VNet connected to the VM.
 - `VM_USER`: Ubuntu username configured through Cloud-Init.
-- `jumpuser`: restricted Linux SSH account on the Proxmox host.
+- `jumpuser`: restricted local SSH account on the Proxmox host.
 
-## 1. Prepare an SSH key on the Linux machine
+## 1. Prepare an SSH key on the local machine
+
+Create the key-pair (`id_ed25519`/`id_ed25519.pub`) on this machine:
 
 ```bash
 test -f ~/.ssh/id_ed25519.pub || ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
-cat ~/.ssh/id_ed25519.pub
 ```
-
-Keep the **private key** (`id_ed25519`) on this machine. Copy the **public key line** (`id_ed25519.pub`) for the SSH gateway setup. Terraform will use that same public key to configure SSH login to the new VM.
 
 ## 2. Prepare Proxmox
 
@@ -62,7 +64,7 @@ Configure the network in the Proxmox web interface before creating the VM:
 
 For example, a subnet of `10.50.0.0/24` with gateway `10.50.0.1` can serve a VM at `10.50.0.10/24`. Use an address range that does not overlap existing networks. Do not assign the gateway address to the VM.
 
-**SNAT** lets the VM reach the internet through the Proxmox host's outgoing connection. The VM stays on a private IP; inbound access from the Linux machine uses the SSH jump account configured below.
+**SNAT** lets the VM reach the internet through the Proxmox host's outgoing connection. The VM stays on a private IP; inbound access from the local machine uses the SSH jump account configured below.
 
 In `infrastructure/terraform/terraform.tfvars`, these values must match the SDN settings:
 
@@ -105,7 +107,7 @@ sshd -T | grep -E '^(pubkeyauthentication|allowtcpforwarding)'
 
 SSH public-key authentication and TCP forwarding must be enabled.
 
-Create `/home/jumpuser/.ssh/authorized_keys` with **one line** containing your Linux machine's public key, preceded by these restrictions. Replace `VM_PRIVATE_IP` with the VM's assigned IP and `ssh-ed25519 AAAA... comment` with the **entire real public key line**:
+Create `/home/jumpuser/.ssh/authorized_keys` with **one line** containing your local machine's public key, preceded by these restrictions. Replace `VM_PRIVATE_IP` with the VM's assigned IP and `ssh-ed25519 AAAA... comment` with the **entire real public key line**:
 
 ```text
 restrict,port-forwarding,permitopen="VM_PRIVATE_IP:22",command="/bin/false" ssh-ed25519 AAAA... comment
@@ -119,7 +121,7 @@ chown jumpuser:jumpuser /home/jumpuser/.ssh/authorized_keys
 chmod 600 /home/jumpuser/.ssh/authorized_keys
 ```
 
-This grants the account only the SSH forwarding needed to reach the VM's port 22; it does not grant root privileges.
+> This grants the account only the SSH forwarding needed to reach the VM's port 22; it does not grant root privileges.
 
 Record the Proxmox SSH server's host-key fingerprint from the **trusted web console**:
 
@@ -137,7 +139,7 @@ From the **Proxmox host's trusted web console**, display:
 cat /etc/pve/pve-root-ca.pem
 ```
 
-Copy the full PEM certificate (including its BEGIN/END lines) to a local file on the Linux machine, for example `~/.config/proxmox/pve-root-ca.pem`:
+Copy the full PEM certificate (including its BEGIN/END lines) to a local file on the local machine, for example `~/.config/pve/pve-root-ca.pem`:
 
 ```bash
 mkdir -p ~/.config/proxmox
@@ -148,7 +150,7 @@ This establishes TLS trust for Terraform's API connection. Verify the certificat
 
 ## 3. Configure and run Terraform
 
-On the **Linux machine**, enter:
+On the **local machine**, enter:
 
 ```bash
 cd infrastructure/terraform
@@ -201,7 +203,7 @@ Check that the planned changes affect **only the intended VM** before applying. 
 
 ## 4. Configure SSH access to the new VM
 
-On the **Linux machine**, edit `~/.ssh/config`, replacing the host, guest IP and guest username:
+On the **local machine**, edit `~/.ssh/config`, replacing the host, guest IP and guest username:
 
 ```sshconfig
 Host proxmox-jump
@@ -242,7 +244,7 @@ Exit the guest session to return to the local Linux shell.
 
 ## 5. Configure k3s with Ansible
 
-From the **Linux machine**, not inside the VM:
+From the **local machine**:
 
 ```bash
 cd ../ansible
