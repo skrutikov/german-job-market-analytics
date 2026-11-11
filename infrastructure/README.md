@@ -1,11 +1,10 @@
 # Proxmox deployment
 
-This is the manual how to Provision an Ubuntu virtual machine on Proxmox VE with **Terraform**, then configure a single-node **k3s** cluster with **Ansible** as shown in the following image:
-![Infrastructure](../docs/images/infrastructure.png)
+This guide explains how to provision an Ubuntu virtual machine on Proxmox VE using **Terraform** and configure a single-node **k3s** cluster using **Ansible**.
 
-The Proxmox host is the SSH jump server; the Ubuntu VM is the Ansible target.
+![Infrastructure deployment architecture](../docs/images/infrastructure.png)
 
-Terraform and Ansible can be run from inside of this repository on the local (Linux) machine.
+Run Terraform and Ansible from a local Linux machine with this repository checked out. The Proxmox host acts as an SSH jump server, and the Ubuntu VM is the Ansible target.
 
 ## Prerequisites
 
