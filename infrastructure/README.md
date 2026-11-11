@@ -121,13 +121,23 @@ chmod 600 /home/jumpuser/.ssh/authorized_keys
 
 This grants the account only the SSH forwarding needed to reach the VM's port 22; it does not grant root privileges.
 
-Record the Proxmox SSH server's host-key fingerprint from the **trusted web console**:
+From the **trusted Proxmox web console**, run:
 
 ```bash
 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 ```
 
-Verify that fingerprint when connecting to the Proxmox host for the first time.
+Keep the displayed `SHA256:...` fingerprint available for comparison (for example, in a temporary text file).
+
+From your **local Linux machine**, initiate the first SSH connection to Proxmox (replace `PROXMOX_HOST` with its hostname or IP address):
+
+```bash
+ssh jumpuser@PROXMOX_HOST
+```
+
+SSH will show an authenticity warning and an **ED25519 key fingerprint**, followed by `Are you sure you want to continue connecting (yes/no/[fingerprint])?`. Compare the complete `SHA256:...` value with the fingerprint from the Proxmox web console. **Only if they match**, type `yes`. SSH stores the accepted host key in `~/.ssh/known_hosts`; the jump account may then close the interactive session because it is restricted to forwarding.
+
+This verifies the **server's identity**. It is distinct from your personal SSH key used for login.
 
 ### Copy the Proxmox CA certificate
 
