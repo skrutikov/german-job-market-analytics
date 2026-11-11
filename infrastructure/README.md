@@ -46,7 +46,7 @@ On the Proxmox **host** shell, confirm that the image is available:
 pvesm list local --content import
 ```
 
-Record the resulting Proxmox file ID (for example `local:import/ubuntu-noble-cloudimg-amd64.qcow2`) for `cloud_image_file_id`.
+Set its identifier (the string beginning with `local:import/`) as the value of `cloud_image_file_id` in the project's `infrastructure/terraform/terraform.tfvars` file.
 
 ### Create a Proxmox API token
 
