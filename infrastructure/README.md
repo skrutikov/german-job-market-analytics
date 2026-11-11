@@ -223,7 +223,22 @@ chmod 600 ~/.ssh/config
 ssh k3s-vm
 ```
 
-The VM's SSH public key was installed by Terraform/Cloud-Init, so no manual `ssh-copy-id` to the new guest is needed. On first connection, verify the guest's SSH host-key fingerprint against a trusted source. Exit the guest session to return to the local Linux shell.
+The VM's SSH public key was installed by Terraform/Cloud-Init, so no manual `ssh-copy-id` to the new guest is needed. On first connection, verify the guest's SSH host-key fingerprint against a trusted source.
+
+While logged into the **Ubuntu VM**, verify its address, route, internet access and DNS:
+
+```bash
+ip -br addr
+ip route
+ping -c 3 VM_GATEWAY_IP    # Replace with the subnet gateway from step 2
+ping -c 3 1.1.1.1
+getent hosts ubuntu.com
+sudo apt update
+```
+
+The VM should show its configured private IP, a default route via the subnet gateway, and successful outbound network and DNS access. Terraform passes the IP, gateway and DNS settings through **Cloud-Init**, so **do not create a second Netplan configuration manually**.
+
+Exit the guest session to return to the local Linux shell.
 
 ## 5. Configure k3s with Ansible
 
