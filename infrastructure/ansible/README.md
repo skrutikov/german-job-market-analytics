@@ -4,14 +4,14 @@ This playbook configures the **existing** Ubuntu VM (`group3-ubuntu01`, `10.10.1
 
 ## Current tested setup (November 2026)
 
-- The VM runs Ubuntu 24.04, with **4 vCPUs, approximately 16 GB RAM, and a 30 GB virtual disk**.
-- k3s `v1.36.5+k3s1` was **initially installed manually** and has been verified `Ready`.
-- The Ansible playbook was subsequently run **locally on the Proxmox VM** through its console.
-- A local inventory worked and the live run completed without failures.
-- Repeated live runs reported **`changed=0`, `failed=0`** (idempotency verified).
-- The `dev` and `prod` namespaces are created/maintained by `files/namespaces.yaml`.
+- The manually provisioned **VM 100** (`group3-ubuntu01`, `10.10.10.20`) runs Ubuntu 24.04.5 LTS, with 4 vCPUs, approximately 16 GB RAM, and a 30 GB virtual disk.
+- k3s `v1.36.5+k3s1` was **initially installed manually**. Kubernetes reports the single control-plane node as **Ready**.
+- The playbook was first run **locally on VM 100** and repeated without changes.
+- **Verified on 11 November 2026:** the same playbook also ran **remotely from Ubuntu WSL** over an instructor-approved SSH jump account on the Proxmox host. The remote run completed with `ok=10 changed=0 unreachable=0 failed=0 skipped=2`.
+- The two skipped tasks were the fresh-host installer download and installation, because k3s was already present.
+- The `dev` and `prod` namespaces are maintained by `files/namespaces.yaml`.
 
-We did **not** test a fresh k3s installation with Ansible. The installer branch of the playbook remains unverified on a clean VM.
+**Not yet tested:** installing k3s via this playbook on a clean Terraform-provisioned VM. A successful no-change run against VM 100 verifies remote access and repeatability, not the fresh-install path.
 
 ## What the playbook does
 
@@ -26,9 +26,71 @@ Existing k3s installations are **not reinstalled or upgraded**. The version sett
 
 The playbook does not manage Proxmox host networking or storage, create VMs, deploy the Job Market Analytics application, or configure Kubernetes ingress.
 
-## Run locally on the existing Proxmox VM (tested approach)
+## Run remotely from WSL through Proxmox (tested, preferred)
 
-The VM's `10.10.10.20` address is on a private network **not directly reachable from our Ubuntu WSL environment**. Therefore our tested approach runs Ansible on the VM itself using `ansible_connection=local`, without SSH.
+The private VM address `10.10.10.20` is not directly reachable from WSL. We now have **instructor-approved** SSH gateway access, so Ansible runs on the WSL machine and reaches the Ubuntu guest via:
+
+```text
+WSL (Ansible controller) -> Proxmox (group3jump) -> VM 100 (group3@10.10.10.20)
+```
+
+The Proxmox Linux SSH gateway account `group3jump` is **not** the Proxmox web/API identity `root1@pve`. It does not require sudo privileges. The private SSH key stays on WSL; only the public key is authorized on the gateway and guest. The Proxmox SSH host key was separately verified against the trusted web console before use.
+
+On **WSL** (`root@Seryoga-MC`), configure `~/.ssh/config`:
+
+```sshconfig
+Host liora-proxmox
+    HostName 195.154.103.231
+    User group3jump
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+
+Host liora-vm100
+    HostName 10.10.10.20
+    User group3
+    ProxyJump liora-proxmox
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+```
+
+Then:
+
+```bash
+chmod 600 ~/.ssh/config
+ssh liora-vm100                   # Verify access before running Ansible
+# If the guest key is not yet authorized, while password SSH is available:
+# ssh-copy-id -i ~/.ssh/id_ed25519.pub liora-vm100
+```
+
+After the guest is configured for public-key authentication, create the **Git-ignored** `inventory.ini` on WSL:
+
+```bash
+cd ~/german-job-market-analytics/infrastructure/ansible
+cat > inventory.ini <<'EOF'
+[k3s_servers]
+liora-vm100 ansible_connection=ssh ansible_python_interpreter=/usr/bin/python3
+EOF
+
+ansible -i inventory.ini k3s_servers -m ping
+ansible-playbook -i inventory.ini install-k3s.yml --ask-become-pass
+```
+
+The playbook asks for `group3`'s **sudo password** (become), not the Proxmox API token. The real remote run ended with:
+
+```text
+PLAY RECAP
+liora-vm100 : ok=10 changed=0 unreachable=0 failed=0 skipped=2
+```
+
+Its node report showed `group3-ubuntu01 Ready control-plane`, internal IP `10.10.10.20`, and k3s `v1.36.5+k3s1`. Ansible is not installed on the guest for this remote approach; the Ansible controller is WSL.
+
+**Gateway scope:** if the `group3jump` key is restricted with `permitopen="10.10.10.20:22"`, the same gateway can serve a rebuilt **VM 100 at the same IP**, but cannot automatically reach a different VM/IP. Confirm authorized SSH forwarding restrictions before changing the target.
+
+**After intentionally replacing VM 100:** ensure Cloud-Init creates `group3` with the WSL public key. A rebuilt guest will have a *new SSH host key*; verify its fingerprint through the trusted Proxmox console and then update the old guest entry in WSL `known_hosts` rather than blindly ignoring host-key warnings. Back up the existing VM and confirm its replacement is approved before any deletion.
+
+## Earlier local execution on VM 100 (also tested)
+
+Before the SSH gateway was configured, the VM's private IP was unreachable directly from WSL. We therefore ran Ansible **inside VM 100** using `ansible_connection=local`.
 
 Open **Proxmox Web UI → Ubuntu VM → Console** (or log into the VM through another approved method), and use the `group3` account with sudo privileges.
 
@@ -86,11 +148,11 @@ sudo k3s kubectl get nodes
 sudo k3s kubectl get namespaces
 ```
 
-## Optional remote execution (not tested from WSL)
+## Inventory example and network precautions
 
-`inventory.example.ini` contains the intended SSH inventory for remote Ansible execution. Use it **only if** Liora provides an approved VPN, route, or SSH gateway to the VM's private network. A working Proxmox browser console and outbound internet access **do not** imply that WSL can directly SSH to `10.10.10.20`.
+The checked-in `inventory.example.ini` shows the target VM's address and user. When using the SSH aliases above, the local `inventory.ini` example in the **remote execution** section is sufficient; never commit host passwords, SSH private keys, or API tokens.
 
-Do not expose SSH ports on the shared Proxmox host or change host-level networking to work around this limitation.
+The shared Proxmox host must only be used as the **approved SSH jump gateway**. Keep any key-level forwarding rules limited to authorized guest addresses and ports; do not broaden access to the shared server or other groups' VMs.
 
 ## Safety and scope
 
