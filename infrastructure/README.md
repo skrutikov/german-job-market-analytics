@@ -8,7 +8,7 @@ Run Terraform and Ansible from the Linux machine containing this repository. The
 
 - A running Proxmox VE host, its web interface, and **root access to the Proxmox Linux shell** (Proxmox node → Shell).
 - HTTPS access to the Proxmox API (TCP 8006) and SSH access to the host (TCP 22) from the Linux machine.
-- An existing Proxmox datastore that accepts **Import** files, and an existing bridge/VNet with working outbound connectivity, gateway and an available private IP for the VM.
+- A Proxmox datastore that accepts **Import** files, an available private subnet, and permission to configure a Simple SDN zone, VNet and Source NAT (SNAT). The Proxmox host must have working outbound connectivity.
 - A free VM ID and sufficient CPU, RAM and disk capacity.
 - Installed locally: **Terraform**, **Ansible**, **OpenSSH** and **curl**.
 - This repository already present on the Linux machine.
@@ -18,6 +18,8 @@ The commands below use these names; replace their values with those for your env
 - `PROXMOX_HOST`: public hostname or IP of the Proxmox host.
 - `VM_ID`: a free Proxmox VM ID (100 or greater).
 - `VM_IP`: assigned *private* IPv4 address of the Ubuntu VM, **without CIDR**.
+- `SDN_ZONE`: identifier of the Proxmox Simple zone.
+- `SDN_VNET`: identifier of the VNet connected to the VM.
 - `VM_USER`: Ubuntu username configured through Cloud-Init.
 - `jumpuser`: restricted Linux SSH account on the Proxmox host.
 
@@ -49,6 +51,29 @@ pvesm list local --content import
 
 Set its identifier (the string beginning with `local:import/`) as the value of `cloud_image_file_id` in the project's `infrastructure/terraform/terraform.tfvars` file.
 
+### Configure a private network with NAT
+
+Configure the network in the Proxmox web interface before creating the VM:
+
+1. Go to **Datacenter → SDN → Zones → Add → Simple**. Create a Simple zone, assigning it an ID (`SDN_ZONE`) and selecting the node that will run the VM.
+2. Go to **Datacenter → SDN → VNets → Add**. Create a VNet (`SDN_VNET`) and assign it to that Simple zone.
+3. Select the VNet, open **Subnets**, and add an IPv4 subnet with the chosen CIDR range and gateway address. **Enable SNAT** on the subnet.
+4. Go to **Datacenter → SDN** and click **Apply** to activate the configuration.
+
+For example, a subnet of `10.50.0.0/24` with gateway `10.50.0.1` can serve a VM at `10.50.0.10/24`. Use an address range that does not overlap existing networks. Do not assign the gateway address to the VM.
+
+**SNAT** lets the VM reach the internet through the Proxmox host's outgoing connection. The VM stays on a private IP; inbound access from the Linux machine uses the SSH jump account configured below.
+
+In `infrastructure/terraform/terraform.tfvars`, these values must match the SDN settings:
+
+```hcl
+network_bridge = "SDN_VNET"
+vm_ipv4_cidr   = "10.50.0.10/24"
+vm_gateway     = "10.50.0.1"
+```
+
+Replace `SDN_VNET` and the example addresses with the actual VNet ID, chosen VM IP/CIDR and subnet gateway. Terraform attaches the VM to **the VNet**, not the zone.
+
 ### Create a Proxmox API token
 
 In the web interface:
@@ -60,9 +85,11 @@ In the web interface:
 | --- | --- |
 | `/vms/VM_ID` | `PVEVMAdmin` |
 | `/storage/DATASTORE` | `PVEDatastoreUser` |
-| `/sdn/zones/ZONE/VNET` | `PVESDNUser` |
+| `/sdn/zones/SDN_ZONE/SDN_VNET` | `PVESDNUser` |
 
-The VNet permission applies when the VM is attached to a Proxmox SDN VNet. Use its **actual** zone and VNet names. The token's effective permissions are also limited by the parent Proxmox user's permissions.
+For the third permission, use the **zone ID and VNet ID created above**. This allows Terraform to connect the new VM's network adapter to that VNet. For example, if the zone is `private` and the VNet is `nat0`, enter `/sdn/zones/private/nat0`.
+
+**Important:** The API token cannot have more permissions than the Proxmox user who owns it. That user must also have permission to create the VM and use the configured storage and VNet.
 
 **Keep the token ID** (for example `automation@pve!terraform`) **and its secret** for Terraform. The token authenticates to the Proxmox *API*; it is not an SSH login.
 
@@ -138,8 +165,8 @@ Set the actual configuration values:
 | `vm_id`, `vm_name` | Free VM ID and desired name |
 | `cpu_cores`, `memory_mb`, `disk_gb` | Desired capacity |
 | `datastore_id` | Storage containing the image and new VM disk |
-| `network_bridge` | Existing bridge/VNet name |
-| `vm_ipv4_cidr`, `vm_gateway` | Assigned private IP **with CIDR** and gateway |
+| `network_bridge` | The `SDN_VNET` ID created in step 2 |
+| `vm_ipv4_cidr`, `vm_gateway` | IP **with CIDR** and gateway from the NAT subnet in step 2 |
 | `vm_username` | Ubuntu SSH username |
 | `ssh_public_key_path` | `~/.ssh/id_ed25519.pub` |
 | `download_cloud_image` | `false` |
