@@ -16,6 +16,7 @@ Run Terraform and Ansible from the Linux machine containing this repository. The
 The commands below use these names; replace their values with those for your environment:
 
 - `PROXMOX_HOST`: public hostname or IP of the Proxmox host.
+- `VM_ID`: an unused Proxmox VM ID (an integer of at least 100).
 - `VM_IP`: assigned *private* IPv4 address of the Ubuntu VM, **without CIDR**.
 - `VM_USER`: Ubuntu username configured through Cloud-Init.
 - `jumpuser`: restricted Linux SSH account on the Proxmox host.
