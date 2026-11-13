@@ -3,21 +3,6 @@
 # This configuration never manages host-level networking or the existing VM 100.
 provider "proxmox" {}
 
-# Optional image download. Proxmox's download-url API needs more than VM-level
-# privileges (including Sys.Modify); keep OFF unless explicitly authorized.
-# Alternatively, have an authorized operator pre-stage the image under
-# var.cloud_image_file_id and leave download_cloud_image = false.
-resource "proxmox_download_file" "ubuntu_cloud_image" {
-  count = var.create_vm && var.download_cloud_image ? 1 : 0
-
-  node_name    = var.node_name
-  datastore_id = var.datastore_id
-  content_type = "import"
-  url          = var.cloud_image_url
-  file_name    = "job-market-noble-server-cloudimg-amd64.qcow2"
-  overwrite    = false
-}
-
 # NEW Ubuntu 24.04 VM from a QCOW2 cloud image, not a clone of VM 100.
 # create_vm defaults to false. VM 100 remains untouched.
 resource "proxmox_virtual_environment_vm" "k3s" {
@@ -58,7 +43,7 @@ resource "proxmox_virtual_environment_vm" "k3s" {
     datastore_id = var.datastore_id
     interface    = "scsi0"
     file_format  = "qcow2"
-    import_from  = var.download_cloud_image ? proxmox_download_file.ubuntu_cloud_image[0].id : var.cloud_image_file_id
+    import_from  = var.cloud_image_file_id
     iothread     = true
     discard      = "on"
     size         = var.disk_gb
