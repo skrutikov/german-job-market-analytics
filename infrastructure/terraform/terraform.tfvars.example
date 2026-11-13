@@ -1,25 +1,35 @@
-# Copy to terraform.tfvars (Git-ignored). Do NOT commit real credentials.
-# This is an example for a TEMPORARY, NEW VM 101; VM 100 is not managed.
-# Verify your group's quotas, this VM ID, and 10.10.10.21 before enabling.
+# Copy this file to terraform.tfvars (Git-ignored), then review and update the values.
+# Do NOT commit real credentials, Terraform state or plan files.
+# This example targets a NEW VM 101 on the Group 3 bootcamp Proxmox host.
+# VM 100 already exists and is explicitly excluded by main.tf.
+# Verify that the chosen VM ID, IP address and resources are available and approved.
+
+# Safety switch: set to true only when you are ready to provision a NEW VM.
+# IMPORTANT: changing it back to false after creation would plan VM destruction.
 create_vm           = false
-node_name           = "B2C-DevOps-Inter-Bootcamp-SEP26-group-5"
-vm_id               = 101
-vm_name             = "job-market-ubuntu-101"
+node_name           = "B2C-DevOps-Inter-Bootcamp-SEP26-group-5" # Exact Proxmox node name
+vm_id               = 101                                     # Free VM ID (do NOT use existing VM 100)
+vm_name             = "job-market-ubuntu-101"                  # Descriptive name of the new VM
 
-# Temporary lab sizing; existing VM 100 uses 4 cores, 16384 MiB, 30 GiB.
-cpu_cores           = 2
-cpu_type            = "x86-64-v2-AES"
-memory_mb           = 4096
-disk_gb             = 16
-datastore_id        = "local"
+# Choose the VM resources within your allocated quota.
+cpu_cores           = 2                # Virtual CPU cores
+cpu_type            = "x86-64-v2-AES"  # CPU model supported by the host
+memory_mb           = 4096             # RAM in MiB (4096 = 4 GiB)
+disk_gb             = 16               # Boot disk size in GiB
+datastore_id        = "local"          # Proxmox storage ID (Datacenter -> Storage)
 
-network_bridge      = "nat0"
-vm_ipv4_cidr        = "10.10.10.21/24" # Proposed ONLY; confirm availability and approval
-vm_gateway          = "10.10.10.1"
-dns_servers         = ["1.1.1.1", "8.8.8.8"]
+# Check Datacenter -> SDN -> VNets -> your VNet -> Subnets in Proxmox.
+# The VNet and gateway must already exist; choose an approved, unused VM IP
+# within that subnet. vm_ipv4_cidr is the VM's address, NOT the subnet address.
+network_bridge      = "nat0"                 # VNet ID (not the SDN zone name)
+vm_ipv4_cidr        = "10.10.10.21/24"       # VM IPv4 address with CIDR prefix
+vm_gateway          = "10.10.10.1"          # Gateway of this particular subnet
+dns_servers         = ["1.1.1.1", "8.8.8.8"] # Public DNS: Cloudflare and Google
 
-vm_username         = "group3"
-ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+# Cloud-Init creates this Ubuntu account inside the new VM (not on Proxmox).
+vm_username         = "group3"                  # Choose a valid Linux username
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"   # Local SSH PUBLIC key; see infrastructure/README.md
 
-# Download the Cloud Image manually in Proxmox before running Terraform.
-cloud_image_file_id  = "local:import/job-market-noble-server-cloudimg-amd64.qcow2"
+# Download the Ubuntu Cloud Image manually through the Proxmox web interface.
+# Use the exact identifier shown by: pvesm list local --content import
+cloud_image_file_id = "local:import/job-market-noble-server-cloudimg-amd64.qcow2"
