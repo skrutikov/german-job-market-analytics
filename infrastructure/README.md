@@ -235,21 +235,20 @@ chmod +x deploy.sh
 ./deploy.sh
 ```
 
-The script uses the current lab's Proxmox API host and token ID as **non-secret defaults**. To use a different Proxmox host/account without editing the script:
+The script uses the current lab's Proxmox API host as a **non-secret default**. To use a different Proxmox host without editing the script:
 
 ```bash
-PROXMOX_HOST=YOUR_PROXMOX_HOST \
-PROXMOX_TOKEN_ID='USER@REALM!terraform' ./deploy.sh
+PROXMOX_HOST=YOUR_PROXMOX_HOST ./deploy.sh
 ```
 
-Enter **only the token secret** at the prompt—not `USER@REALM!terraform=SECRET`. The script constructs `PROXMOX_VE_API_TOKEN` in its own process, verifies the local CA file and `terraform.tfvars`, runs `terraform init`, `fmt -check`, `validate`, and saves `vm.tfplan` with `terraform plan`. After reviewing the plan, type `apply` to execute that exact saved plan. Running `./deploy.sh` does **not** leave credentials in your interactive shell.
+Paste the **complete API token** from your password manager in `USER@REALM!terraform=SECRET` format (for example `root1@pve!terraform=...`). The prompt hides what you type. The script exports `PROXMOX_VE_API_TOKEN` in its own process, verifies the local CA file and `terraform.tfvars`, runs `terraform init`, `fmt -check`, `validate`, and saves `vm.tfplan` with `terraform plan`. After reviewing the plan, type `apply` to execute that exact saved plan. Running `./deploy.sh` does **not** leave credentials in your interactive shell.
 
 **Avoid duplicated configuration:** `terraform.tfvars` is now the single source of truth for `vm_id`, `vm_ipv4_cidr` and other Terraform inputs; `deploy.sh` intentionally does not override them with `-var`. Re-running with the same local Terraform state should produce no changes. **Back up the state** securely and do not commit `terraform.tfvars`, `vm.tfplan`, the state or credentials. Never set `create_vm = false` to “skip provisioning”: Terraform would plan to destroy an already-managed VM. Review destructive changes before approving.
 
 Common errors:
 
 - `curl (77)` or certificate errors: trusted Proxmox CA file missing/unreadable or incorrect.
-- HTTP `401`: token ID or secret incorrect. Supply only the secret to this script.
+- HTTP `401`: token ID or secret incorrect. Paste the full `USER@REALM!TOKEN=SECRET` value into this script.
 - HTTP `403` on VM creation: verify effective `VM.Allocate`, `Datastore.AllocateSpace` and `SDN.Use` permissions (Section 2).
 - “Refusing to override existing file”: image is already staged; keep `download_cloud_image = false` and reference its file ID.
 - VM `101` already exists outside the current Terraform state: do not overwrite or adopt it automatically. Check the VM ownership and state first.
