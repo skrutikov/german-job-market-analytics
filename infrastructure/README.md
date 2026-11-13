@@ -10,8 +10,8 @@ Run Terraform and Ansible from a local Linux machine with this repository checke
 
 - **One-time Proxmox preparation:** download the Ubuntu Cloud Image, verify the NAT VNet, create the API token, and grant it the shared storage and VNet permissions (Section 2). These actions require authorized Proxmox administration.
 - **Before creating or recreating a VM:** verify and, if necessary, grant that specific VM ID's `/vms/VM_ID` ACL. On this host, destroying a VM has removed its VM-specific ACL; the shared storage/VNet permissions remain (Section 2).
-- **VM provisioning:** from a local Ubuntu/Linux machine (including WSL), configure `infrastructure/terraform/terraform.tfvars`, install the trusted Proxmox CA certificate and run `./deploy.sh` (Section 3). The script runs Terraform init, validate, plan and, **only after explicit confirmation**, apply.
-- **After provisioning:** configure the SSH jump host and run the Ansible playbook to install k3s (Sections 4–5). **`deploy.sh` does not yet install k3s or deploy the application.**
+- **VM + k3s deployment:** from local Ubuntu/Linux (including WSL), configure `infrastructure/terraform/terraform.tfvars`, trust the Proxmox CA and run `./deploy.sh` (Section 3). The script plans/applies Terraform **only after confirmation**, waits for SSH and Cloud-Init, then invokes Ansible to install/configure k3s and verify the node. The restricted `jumpuser` SSH account must already be configured on Proxmox (Section 2).
+- **After deployment:** use the optional SSH alias for interactive access (Section 4), or rerun the Ansible playbook manually for troubleshooting (Section 5). **The application itself is not deployed by `deploy.sh`.**
 
 This guide describes a tested bootcamp setup, not a zero-touch installation of a fresh Proxmox host. Never assume that the example VM ID, private IP, subnet, VNet or permissions are available on another host. Keep the Terraform state for repeat runs.
 
@@ -257,7 +257,13 @@ The script uses the current lab's Proxmox API host as a **non-secret default**. 
 PROXMOX_HOST=YOUR_PROXMOX_HOST ./deploy.sh
 ```
 
-Paste the **complete API token** from your password manager in `USER@REALM!terraform=SECRET` format (for example `root1@pve!terraform=...`). The prompt hides what you type. The script exports `PROXMOX_VE_API_TOKEN` in its own process, verifies the local CA file and `terraform.tfvars`, runs `terraform init`, `validate`, and saves `vm.tfplan` with `terraform plan`. After reviewing the plan, type `apply` to execute that exact saved plan. Running `./deploy.sh` does **not** leave credentials in your interactive shell.
+Paste the **complete API token** from your password manager in `USER@REALM!terraform=SECRET` format (for example `root1@pve!terraform=...`). The prompt hides what you type. The script exports `PROXMOX_VE_API_TOKEN` in its own process, verifies the local CA file and `terraform.tfvars`, runs `terraform init`, `validate`, and saves `vm.tfplan` with `terraform plan`. After reviewing the plan, type `apply` to execute the saved Terraform plan. **Once Terraform succeeds**, the script continues to SSH readiness, Cloud-Init, the existing Ansible k3s playbook, and Kubernetes verification. Running `./deploy.sh` does **not** leave credentials in your interactive shell.
+
+**SSH and Ansible prerequisites for the automated phase:** install `ansible` and `openssh-client` locally; create the SSH key from Section 1; configure the restricted `jumpuser` account and permitted forwarding on Proxmox (Section 2). The script automatically connects as `vm_username` to the **IP in `terraform.tfvars`**, via `jumpuser@$PROXMOX_HOST`. It derives the matching local private key by stripping `.pub` from `ssh_public_key_path` and creates a temporary Ansible inventory (not committed to Git). You may override the default jump username with `JUMP_USER=other_user ./deploy.sh`. No `~/.ssh/config` alias is required for the scripted deployment.
+
+**SSH host-key security:** the first SSH connection may ask you to trust the Proxmox host and/or new VM. Compare each displayed fingerprint with the key reported by the **trusted Proxmox console** or the VM console (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the corresponding host) before accepting. The script does not disable host-key checking. If you recreate the VM at the same IP, its host key will usually change: verify the new VM fingerprint from its Proxmox console first, then remove the obsolete entry (for example `ssh-keygen -R 10.10.10.21`) before rerunning the deployment. Do not blindly accept host-key changes.
+
+**If SSH or Ansible fails after Terraform succeeds:** the VM still exists and remains managed by Terraform; the script does not roll back the VM. Fix the jump-account configuration, SSH key, network, host-key trust or sudo access and rerun `./deploy.sh` using the same state. The playbook is designed to be rerun and skips fresh installation when k3s is already present. Ansible requires the Ubuntu Cloud-Init account to have `sudo` privileges.
 
 Formatting is optional: run `terraform -chdir=infrastructure/terraform fmt` from the repository root if you want to normalize Terraform files. A formatting difference in `terraform.tfvars` will not block `deploy.sh`; configuration validation still runs.
 
@@ -288,9 +294,9 @@ The script asks for the **full Proxmox API token** (as `deploy.sh` does), verifi
 
 Do not set `create_vm = false` as a substitute for `destroy.sh`: that could make a later `./deploy.sh` plan destruction without the extra VM-ID confirmation.
 
-## 4. Configure SSH access to the new VM
+## 4. Optional: SSH alias for interactive VM access
 
-On the **local machine**, edit `~/.ssh/config`, replacing the host, guest IP and guest username:
+`deploy.sh` uses SSH with `-J jumpuser@PROXMOX_HOST` directly, so **you do not need to edit `~/.ssh/config` for automated deployment**. To connect interactively using the shorter `ssh k3s-vm` command, edit `~/.ssh/config` on the local machine and replace the host, guest IP and username:
 
 ```sshconfig
 Host proxmox-jump
@@ -329,9 +335,11 @@ The VM should show its configured private IP, a default route via the subnet gat
 
 Exit the guest session to return to the local Linux shell.
 
-## 5. Configure k3s with Ansible
+## 5. k3s with Ansible (run automatically by `deploy.sh`)
 
-From the **local machine**:
+`deploy.sh` now runs the existing `infrastructure/ansible/install-k3s.yml` playbook after SSH and Cloud-Init are ready. It creates a temporary inventory from Terraform outputs, runs an Ansible ping, installs/configures k3s, then verifies the node and namespaces. No separate inventory file is needed for the automatic deployment.
+
+For **manual troubleshooting or replaying the playbook**, first configure the optional `k3s-vm` SSH alias in Section 4. Then, from the **repository root** on the local machine:
 
 ```bash
 cd infrastructure/ansible
@@ -344,7 +352,7 @@ ansible -i inventory.ini k3s_servers -m ping
 ansible-playbook -i inventory.ini install-k3s.yml
 ```
 
-The Ubuntu Cloud-Init account must have working `sudo` privileges for the playbook's `become: true` tasks. If it requires a sudo password, supply it with `--ask-become-pass`.
+The Ubuntu Cloud-Init account must have working `sudo` privileges for the playbook's `become: true` tasks. The automatic script assumes passwordless sudo; if the account requires a sudo password, the manual command can supply it with `--ask-become-pass`.
 
 The playbook installs and enables k3s, waits for a Ready node, and applies the `dev` and `prod` namespace manifest. Re-run the same playbook to verify that it makes no unnecessary changes.
 
@@ -355,5 +363,5 @@ ssh k3s-vm 'sudo k3s kubectl get nodes'
 ssh k3s-vm 'sudo k3s kubectl get namespaces'
 ```
 
-**Result:** a Terraform-provisioned Ubuntu VM running a single-node k3s cluster, configured by Ansible.
+**Result:** one `./deploy.sh` invocation provisions or updates the Ubuntu VM using Terraform and configures its single-node k3s cluster with Ansible, provided the Proxmox token, VM-specific ACL, SSH jump account and trusted host keys are prepared.
 
