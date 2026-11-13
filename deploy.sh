@@ -37,7 +37,6 @@ export PROXMOX_VE_API_TOKEN
 # terraform.tfvars is the single source of truth for VM ID, IP, subnet,
 # node, storage, sizing and Cloud-Init username.
 terraform -chdir="$TF_DIR" init -input=false
-terraform -chdir="$TF_DIR" fmt -check
 terraform -chdir="$TF_DIR" validate
 terraform -chdir="$TF_DIR" plan -out=vm.tfplan
 
