@@ -8,13 +8,6 @@ Run Terraform and Ansible from a local Linux machine with this repository checke
 
 ## Prerequisites
 
-- A running Proxmox VE host, its web interface, and **root access to the Proxmox Linux shell** (Proxmox node → Shell).
-- HTTPS access to the Proxmox API (TCP 8006) and SSH access to the host (TCP 22) from the local machine.
-- A Proxmox datastore that accepts **Import** files, an available private subnet, and permission to configure a Simple SDN zone, VNet and Source NAT (SNAT). The Proxmox host must have working outbound connectivity.
-- A free VM ID and sufficient CPU, RAM and disk capacity.
-- Installed locally: **Terraform**, **Ansible**, **OpenSSH** and **curl**.
-- This repository already present on the local machine.
-
 The commands below use these names; replace their values with those for your environment:
 
 - `PROXMOX_HOST`: public hostname or IP of the Proxmox host.
@@ -25,9 +18,20 @@ The commands below use these names; replace their values with those for your env
 - `VM_USER`: Ubuntu username configured through Cloud-Init.
 - `jumpuser`: restricted local SSH account on the Proxmox host.
 
+## Prerequisites
+
+- A running Proxmox VE host, its web interface, and **root access to the Proxmox Linux shell** (run `id -u` in the Proxmox shell; the result must be `0`).
+- HTTPS access to the Proxmox API (TCP 8006) and SSH access to the host (TCP 22) from the local machine (check with `nc -vz PROXMOX_HOST 8006` and `nc -vz PROXMOX_HOST 22`).
+- A Proxmox datastore supporting **Import** files and VM disks (check `cat /etc/pve/storage.cfg`; the selected datastore's `content` entry must include `import` and `images`).
+- An available private subnet (check existing ranges with `ip -4 route` and `cat /etc/pve/sdn/subnets.cfg` on Proxmox; choose a non-overlapping private subnet).
+- Permission to configure a **Simple SDN zone** (requires Proxmox administrator privileges, available through the root shell; view existing zones with `pvesh get /cluster/sdn/zones`).
+- Permission to configure a **VNet and Source NAT (SNAT)** (same administrator access; view existing VNets with `pvesh get /cluster/sdn/vnets`).
+- The Proxmox host must have internet access so that VMs can reach the internet through NAT (check from Proxmox with `curl -I --max-time 10 https://cloud-images.ubuntu.com`).
+- Installed on the **local machine**: **Terraform**, **Ansible**, **OpenSSH** and **curl** (check with `terraform version`, `ansible --version`, `ssh -V` and `curl --version`).
+
 ## 1. Prepare an SSH key on the local machine
 
-Create the key-pair (`id_ed25519`/`id_ed25519.pub`) on this machine:
+Create the key-pair (`id_ed25519`/`id_ed25519.pub`) on the local machine:
 
 ```bash
 test -f ~/.ssh/id_ed25519.pub || ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
