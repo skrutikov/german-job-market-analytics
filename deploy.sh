@@ -8,9 +8,8 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TF_DIR="$REPO_ROOT/infrastructure/terraform"
 
 # Non-secret defaults for the current bootcamp environment; override with
-# PROXMOX_HOST=... PROXMOX_TOKEN_ID=... ./deploy.sh on other installations.
+# PROXMOX_HOST=... ./deploy.sh on other installations.
 PROXMOX_HOST="${PROXMOX_HOST:-195.154.103.231}"
-PROXMOX_TOKEN_ID="${PROXMOX_TOKEN_ID:-root1@pve!terraform}"
 export PROXMOX_VE_ENDPOINT="${PROXMOX_VE_ENDPOINT:-https://${PROXMOX_HOST}:8006/}"
 export SSL_CERT_FILE="${SSL_CERT_FILE:-$HOME/.config/proxmox/pve-root-ca.pem}"
 
@@ -23,18 +22,17 @@ if [[ ! -f "$TF_DIR/terraform.tfvars" ]]; then
     exit 1
 fi
 
-# Enter only the secret: the script constructs TOKEN_ID=SECRET for the provider.
-# A preconfigured PROXMOX_VE_API_TOKEN is also accepted (e.g. in CI).
+# Paste the complete token from the password manager: USER@REALM!TOKEN=SECRET.
+# An existing PROXMOX_VE_API_TOKEN is also accepted (e.g. in CI).
 if [[ -z "${PROXMOX_VE_API_TOKEN:-}" ]]; then
-    read -rsp "Enter Proxmox API token secret (without token ID): " TOKEN_SECRET
+    read -rsp "Enter full Proxmox API token (ID=secret): " PROXMOX_VE_API_TOKEN
     echo
-    if [[ -z "$TOKEN_SECRET" ]]; then
-        echo "ERROR: Empty token secret." >&2
-        exit 1
-    fi
-    export PROXMOX_VE_API_TOKEN="${PROXMOX_TOKEN_ID}=${TOKEN_SECRET}"
-    unset TOKEN_SECRET
 fi
+if [[ -z "${PROXMOX_VE_API_TOKEN:-}" || "${PROXMOX_VE_API_TOKEN}" != *=* ]]; then
+    echo "ERROR: Expected full token in USER@REALM!TOKEN=SECRET format." >&2
+    exit 1
+fi
+export PROXMOX_VE_API_TOKEN
 
 # terraform.tfvars is the single source of truth for VM ID, IP, subnet,
 # node, storage, sizing and Cloud-Init username.
