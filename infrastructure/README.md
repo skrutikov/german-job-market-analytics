@@ -131,6 +131,14 @@ pveum user token permissions root1@pve terraform --path /sdn/zones/studnat/nat0
 
 You should see `VM.Allocate`, `Datastore.AllocateSpace` and `SDN.Use` respectively. If one is missing, check the owner's permissions with `pveum user permissions root1@pve --path PATH`. Do not grant access to all VMs or the cluster root merely to fix these checks.
 
+**Repeat deployments after destruction:** Proxmox automatically deletes the VM-specific ACLs under `/vms/101` when VM 101 is destroyed, even when the Terraform state is clean. Before recreating a VM with the same ID, check the token's permissions again and restore `PVEVMAdmin` for the owner and token on `/vms/101` if `VM.Allocate` is missing. The `/storage/local` and `/sdn/zones/studnat/nat0` ACLs are separate and normally remain intact; don't recreate their roles unnecessarily. An authorized administrator can restore the VM ACL with:
+
+```bash
+pveum acl modify /vms/101 --roles PVEVMAdmin \
+    --users root1@pve --tokens 'root1@pve!terraform'
+```
+
+
 ### Create the SSH jump account
 
 Run on the **Proxmox host** as root:
@@ -255,7 +263,7 @@ chmod +x destroy.sh
 
 The script asks for the **full Proxmox API token** (as `deploy.sh` does), verifies that `proxmox_virtual_environment_vm.k3s[0]` is present in the Terraform state, and checks that its managed VM ID matches `vm_id` in `terraform.tfvars`. It rejects a mismatch and explicitly refuses VM `100`. It then prepares a **targeted Terraform destroy plan for that VM**, displays it, and requires the exact confirmation `destroy VM_ID` (for example, `destroy 101`) before applying. You should still review the plan carefully.
 
-**Important:** `destroy.sh` does **not** search Proxmox for any VM with a matching numeric ID. It can only destroy the VM already managed by your current Terraform state. Do not delete your state to “reset” the project; losing it would prevent Terraform from tracking the existing VM. A VM's disks/data are deleted when it is destroyed. The manually downloaded Cloud Image, NAT networking and Proxmox API permissions are left alone.
+**Important:** `destroy.sh` does **not** search Proxmox for any VM with a matching numeric ID. It can only destroy the VM already managed by your current Terraform state. Do not delete your state to “reset” the project; losing it would prevent Terraform from tracking the existing VM. A VM's disks/data are deleted when it is destroyed. The manually downloaded Cloud Image and NAT networking are left alone. **Proxmox automatically removes the destroyed VM's `/vms/VM_ID` ACL entries**, so before the next `./deploy.sh`, re-grant that VM's permissions as described in Section 2; storage and VNet ACLs normally remain unchanged.
 
 Do not set `create_vm = false` as a substitute for `destroy.sh`: that could make a later `./deploy.sh` plan destruction without the extra VM-ID confirmation.
 
