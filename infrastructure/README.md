@@ -13,7 +13,49 @@ Run Terraform and Ansible from a local Linux machine with this repository checke
 - **VM + k3s deployment:** from local Ubuntu/Linux (including WSL), configure `infrastructure/terraform/terraform.tfvars`, trust the Proxmox CA and run `./deploy.sh` (Section 3). The script plans/applies Terraform **only after confirmation**, waits for SSH and Cloud-Init, then invokes Ansible to install/configure k3s and verify the node. The restricted `jumpuser` SSH account must already be configured on Proxmox (Section 2).
 - **After deployment:** use the optional SSH alias for interactive access (Section 4), or rerun the Ansible playbook manually for troubleshooting (Section 5). **The application itself is not deployed by `deploy.sh`.**
 
-This guide describes a tested bootcamp setup, not a zero-touch installation of a fresh Proxmox host. Never assume that the example VM ID, private IP, subnet, VNet or permissions are available on another host. Keep the Terraform state for repeat runs.
+This guide describes a tested bootcamp setup, not a zero-touch installation of a fresh Proxmox host. For the **tested destroy/redeploy sequence on this already-prepared host**, use the quick procedure below. For a fresh host, follow the full prerequisites. Never assume that the example VM ID, private IP, subnet, VNet or permissions are available on another host. Keep the Terraform state for repeat runs.
+
+## Recreate VM 101 on the prepared bootcamp host (tested)
+
+This is the **short path we tested successfully**, not a fresh installation of Proxmox. The following are already set up **once** on this host: the Ubuntu Cloud Image on `local`, the `studnat/nat0` network, the `root1@pve!terraform` API token and its storage/VNet permissions, and the restricted `jumpuser` SSH account. On the local WSL machine, keep the configured `terraform.tfvars`, trusted Proxmox CA, SSH key and **the original Terraform state**.
+
+1. **From WSL, destroy the Terraform-managed test VM if you want a fresh one:**
+
+   ```bash
+   ./destroy.sh
+   ```
+
+   Confirm the destructive plan only if you intend to delete VM 101 and its disks. Do not delete the Terraform state.
+
+2. **On the Proxmox host as an authorized administrator, restore the VM-specific ACL if it was removed by deletion:**
+
+   ```bash
+   pveum user token permissions root1@pve terraform \
+       --path /vms/101
+   ```
+
+   If `VM.Allocate` is absent, run:
+
+   ```bash
+   pveum acl modify /vms/101 \
+       --roles PVEVMAdmin \
+       --users root1@pve \
+       --tokens 'root1@pve!terraform'
+   ```
+
+   This is the **only Proxmox ACL we had to restore after destroying VM 101**. The shared storage and VNet permissions remained intact. No need to recreate the API token, re-download the image, reconfigure the network or recreate `jumpuser`.
+
+3. **Back in WSL, recreate the VM and install k3s:**
+
+   ```bash
+   ./deploy.sh
+   ```
+
+   Review the Terraform plan and type `apply`. The script waits for Ubuntu Cloud-Init, connects through `jumpuser`, runs Ansible and verifies the k3s node and `dev`/`prod` namespaces. A second `./deploy.sh` run was also tested: **Terraform made no changes, and Ansible reported `changed=0`**.
+
+**SSH after recreation:** a freshly created VM may have a different SSH host key at the same IP. If SSH reports a changed host key, verify the new fingerprint in the trusted Proxmox VM console before removing the old known-host entry (see Section 3). Do not bypass SSH host-key checking.
+
+For a **new Proxmox host or a changed lab environment**, follow the complete setup instructions below: the short path depends on all those shared prerequisites being present.
 
 ## Configuration names
 
@@ -295,6 +337,8 @@ The script asks for the **full Proxmox API token** (as `deploy.sh` does), verifi
 **Important:** `destroy.sh` does **not** search Proxmox for any VM with a matching numeric ID. It can only destroy the VM already managed by your current Terraform state. Do not delete your state to “reset” the project; losing it would prevent Terraform from tracking the existing VM. A VM's disks/data are deleted when it is destroyed. The manually downloaded Cloud Image and NAT networking are left alone. **In this test, Proxmox removed the destroyed VM's `/vms/101` ACL**, so before the next `./deploy.sh`, follow **Section 2B** to verify and restore the VM-specific permission; shared storage/VNet ACLs normally remain unchanged.
 
 Do not set `create_vm = false` as a substitute for `destroy.sh`: that could make a later `./deploy.sh` plan destruction without the extra VM-ID confirmation.
+
+For the exact sequence to recreate this VM after a destroy, see **Recreate VM 101 on the prepared bootcamp host (tested)** near the top of this README.
 
 ## 4. Optional: SSH alias for interactive VM access
 
