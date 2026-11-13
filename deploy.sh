@@ -81,8 +81,8 @@ if [[ ! -r "$SSH_PRIVATE_KEY" ]]; then
     exit 1
 fi
 if [[ ! "$VM_IP" =~ ^[0-9]+(\.[0-9]+){3}$ ||
-      ! "$VM_USER" =~ ^[a-z_][a-z0-9_-]*\$?$ ||
-      ! "$JUMP_USER" =~ ^[a-z_][a-z0-9_-]*\$?$ ]]; then
+      ! "$VM_USER" =~ ^[a-z_][a-z0-9_-]*$ ||
+      ! "$JUMP_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
     echo "ERROR: Unexpected IP or SSH username in Terraform configuration." >&2
     exit 1
 fi
