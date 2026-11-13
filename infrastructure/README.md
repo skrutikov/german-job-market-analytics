@@ -242,6 +242,21 @@ Common errors:
 
 The current Ubuntu URL uses `noble/current`, which can change; **for bit-for-bit reproducibility**, pin a dated/released image and verify its checksum before distributing the environment setup.
 
+### Destroy a Terraform-managed VM with `destroy.sh`
+
+To remove the test VM when you no longer need it, run the following **from the repository root** on the same local machine and with the same `infrastructure/terraform/terraform.tfstate` used by `deploy.sh`:
+
+```bash
+chmod +x destroy.sh
+./destroy.sh
+```
+
+The script asks for the **full Proxmox API token** (as `deploy.sh` does), verifies that `proxmox_virtual_environment_vm.k3s[0]` is present in the Terraform state, and checks that its managed VM ID matches `vm_id` in `terraform.tfvars`. It rejects a mismatch and explicitly refuses VM `100`. It then prepares a **targeted Terraform destroy plan for that VM**, displays it, and requires the exact confirmation `destroy VM_ID` (for example, `destroy 101`) before applying. You should still review the plan carefully.
+
+**Important:** `destroy.sh` does **not** search Proxmox for any VM with a matching numeric ID. It can only destroy the VM already managed by your current Terraform state. Do not delete your state to “reset” the project; losing it would prevent Terraform from tracking the existing VM. A VM's disks/data are deleted when it is destroyed. The manually downloaded Cloud Image, NAT networking and Proxmox API permissions are left alone.
+
+Do not set `create_vm = false` as a substitute for `destroy.sh`: that could make a later `./deploy.sh` plan destruction without the extra VM-ID confirmation.
+
 ## 4. Configure SSH access to the new VM
 
 On the **local machine**, edit `~/.ssh/config`, replacing the host, guest IP and guest username:
