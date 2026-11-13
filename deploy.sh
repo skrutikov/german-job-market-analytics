@@ -116,7 +116,23 @@ if [[ "$SSH_READY" != true ]]; then
 fi
 
 echo "Waiting for Ubuntu Cloud-Init to finish..."
-ssh "${SSH_OPTS[@]}" "$VM_USER@$VM_IP" "cloud-init status --wait"
+# Exit code 2 means Cloud-Init completed with recoverable errors. Do not let
+# set -e silently end deployment; report the error before deciding whether
+# k3s installation can continue. Exit codes 1/255 are fatal here.
+if ssh "${SSH_OPTS[@]}" "$VM_USER@$VM_IP" "cloud-init status --wait"; then
+    echo "Cloud-Init completed successfully."
+else
+    CLOUD_INIT_RC=$?
+    echo "Cloud-Init status returned exit code $CLOUD_INIT_RC."
+    ssh "${SSH_OPTS[@]}" "$VM_USER@$VM_IP" "cloud-init status --long" || true
+    if [[ "$CLOUD_INIT_RC" == 2 ]]; then
+        echo "WARNING: Cloud-Init completed with recoverable errors (exit 2)."
+        echo "Review the details above; proceeding to the Ansible readiness check."
+    else
+        echo "ERROR: Cloud-Init did not complete successfully; not starting Ansible." >&2
+        exit "$CLOUD_INIT_RC"
+    fi
+fi
 
 # Temporary inventory: no duplicate VM IP/user settings or committed credentials.
 INVENTORY="$(mktemp)"
