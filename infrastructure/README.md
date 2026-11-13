@@ -6,7 +6,15 @@ This guide explains how to provision an Ubuntu virtual machine on Proxmox VE usi
 
 Run Terraform and Ansible from a local Linux machine with this repository checked out. The Proxmox host acts as an SSH jump server, and the Ubuntu VM is the Ansible target.
 
-## Prerequisites
+## Deployment overview
+
+- **One-time Proxmox preparation:** stage the Ubuntu Cloud Image, verify the NAT VNet, create the restricted API token and assign its ACLs (Section 2). These actions require authorized administration on the Proxmox host.
+- **VM provisioning:** from a local Ubuntu/Linux machine (including WSL), configure `infrastructure/terraform/terraform.tfvars`, install the trusted Proxmox CA certificate and run `./deploy.sh` (Section 3). The script runs Terraform init, format-check, validate, plan and, **only after explicit confirmation**, apply.
+- **After provisioning:** configure the SSH jump host and run the Ansible playbook to install k3s (Sections 4–5). **`deploy.sh` does not yet install k3s or deploy the application.**
+
+This guide describes a tested bootcamp setup, not a zero-touch installation of a fresh Proxmox host. Never assume that the example VM ID, private IP, subnet, VNet or permissions are available on another host. Keep the Terraform state for repeat runs.
+
+## Configuration names
 
 The commands below use these names; replace their values with those for your environment:
 
@@ -46,7 +54,7 @@ In the Proxmox web interface, open **Datacenter → Storage** and ensure the sel
 Then open **Datacenter → your node → local → Import → Download from URL**:
 
 - URL: `https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img`
-- Filename: `ubuntu-noble-cloudimg-amd64.qcow2`
+- Filename: `job-market-noble-server-cloudimg-amd64.qcow2` (must match the default `cloud_image_file_id`)
 
 On the Proxmox **host** shell, confirm that the image is available:
 
@@ -54,7 +62,7 @@ On the Proxmox **host** shell, confirm that the image is available:
 pvesm list local --content import
 ```
 
-Set its identifier (the string beginning with `local:import/`) as the value of `cloud_image_file_id` in the project's `infrastructure/terraform/terraform.tfvars` file.
+Set its identifier (the string beginning with `local:import/`) as the value of `cloud_image_file_id` in `infrastructure/terraform/terraform.tfvars`. If the image is **already present**, reuse it: set `download_cloud_image = false`. Do not attempt to download to the same filename with `overwrite = false`. `qemu-img info` can confirm the QCOW2 format but does not by itself guarantee a complete download; verify the source/checksum when preparing a new image.
 
 ### Configure a private network with NAT
 
@@ -79,24 +87,63 @@ vm_gateway     = "10.50.0.1"
 
 Replace `SDN_VNET` and the example addresses with the actual VNet ID, chosen VM IP/CIDR and subnet gateway. Terraform attaches the VM to **the VNet**, not the zone.
 
-### Create a Proxmox API token
+### Create a Proxmox API token and permissions
 
-In the web interface:
+In the Proxmox web interface, go to **Datacenter → Permissions → API Tokens**. Create a token (e.g. `terraform` for `root1@pve`) with **Privilege Separation enabled** and securely save its secret. The full token ID looks like `root1@pve!terraform`. It is **not** an SSH login.
 
-1. **Datacenter → Permissions → API Tokens**: create a token named `terraform` for an existing Proxmox user with sufficient underlying privileges. Enable **Privilege Separation** and securely save the token secret.
-2. **Datacenter → Permissions → Add → API Token Permission**: assign the token these roles, using the chosen VM ID, datastore and VNet.
+On a shared training host, **only an authorized administrator** should create users, roles or ACLs. The following example matches this project's tested environment; verify the actual names and approved resources first:
 
-| Path | Role |
-| --- | --- |
-| `/vms/VM_ID` | `PVEVMAdmin` |
-| `/storage/DATASTORE` | `PVEDatastoreUser` |
-| `/sdn/zones/SDN_ZONE/SDN_VNET` | `PVESDNUser` |
+| ACL path | Role/privileges | Why |
+| --- | --- | --- |
+| `/vms/101` | `PVEVMAdmin` (including `VM.Allocate`, `VM.Config.*`, `VM.PowerMgmt`) | Create and configure only VM 101 |
+| `/storage/local` | `Datastore.AllocateSpace`, `Datastore.Audit` (custom role below) | Allocate the VM disk and read the storage |
+| `/sdn/zones/studnat/nat0` | `PVESDNUser` (including `SDN.Use`) | Connect VM 101 to VNet `nat0` |
 
-For the third permission, use the **zone ID and VNet ID created above**. This allows Terraform to connect the new VM's network adapter to that VNet. For example, if the zone is `private` and the VNet is `nat0`, enter `/sdn/zones/private/nat0`.
+**The SDN zone is `studnat`, not `private`, on this host.** Check with `pvesh get /cluster/sdn/vnets`. In `terraform.tfvars`, the network bridge remains `nat0` (the VNet ID).
 
-**Important:** The API token cannot have more permissions than the Proxmox user who owns it. That user must also have permission to create the VM and use the configured storage and VNet.
+From the **Proxmox host root shell**, create a custom storage role once (skip `role add` if a role with that name already exists). Grant roles to **both** the token owner and the token; their effective privileges are intersected when privilege separation is enabled:
 
-**Keep the token ID** (for example `automation@pve!terraform`) **and its secret** for Terraform. The token authenticates to the Proxmox *API*; it is not an SSH login.
+```bash
+TOKEN_OWNER='root1@pve'
+TOKEN_ID='root1@pve!terraform'
+VM_ID=101
+DATASTORE='local'
+SDN_ZONE='studnat'
+SDN_VNET='nat0'
+
+pveum role add TerraformVMStorage --privs "Datastore.AllocateSpace Datastore.Audit"
+
+pveum acl modify "/vms/$VM_ID" \
+    --roles PVEVMAdmin --users "$TOKEN_OWNER" --tokens "$TOKEN_ID"
+pveum acl modify "/storage/$DATASTORE" \
+    --roles TerraformVMStorage --users "$TOKEN_OWNER" --tokens "$TOKEN_ID"
+pveum acl modify "/sdn/zones/$SDN_ZONE/$SDN_VNET" \
+    --roles PVESDNUser --users "$TOKEN_OWNER" --tokens "$TOKEN_ID"
+```
+
+Verify the **effective token permissions**, rather than only the ACL assignments:
+
+```bash
+pveum user token permissions root1@pve terraform --path /vms/101
+pveum user token permissions root1@pve terraform --path /storage/local
+pveum user token permissions root1@pve terraform --path /sdn/zones/studnat/nat0
+```
+
+You should see `VM.Allocate`, `Datastore.AllocateSpace` and `SDN.Use` respectively. If one is missing, check the owner's permissions with `pveum user permissions root1@pve --path PATH`. Do not grant access to all VMs or the cluster root merely to fix these checks.
+
+**Optional: automated Cloud Image download.** Normally keep `download_cloud_image = false` and reuse the staged image. To set it to `true` on a fresh host, the token and its owner also need `Datastore.AllocateTemplate` on `/storage/local` **and** `Sys.AccessNetwork` on `/nodes/NODE_NAME`. The latter lets Proxmox fetch remote URLs and must be granted deliberately; it is preferable to broad `Sys.Modify` permissions. Example for authorized administrators:
+
+```bash
+NODE_NAME='B2C-DevOps-Inter-Bootcamp-SEP26-group-5'
+pveum role add TerraformImageDownload --privs "Datastore.AllocateTemplate"
+pveum role add TerraformNetworkDownload --privs "Sys.AccessNetwork"
+pveum acl modify "/storage/$DATASTORE" \
+    --roles TerraformImageDownload --users "$TOKEN_OWNER" --tokens "$TOKEN_ID"
+pveum acl modify "/nodes/$NODE_NAME" \
+    --roles TerraformNetworkDownload --users "$TOKEN_OWNER" --tokens "$TOKEN_ID"
+```
+
+Run `pveum role list` before creating any already-existing roles. Avoid importing or overwriting a shared image without confirming who owns it. A Proxmox `403` means the token authenticated but lacks permission; a `401` indicates authentication failure.
 
 ### Create the SSH jump account
 
@@ -154,7 +201,7 @@ From the **Proxmox host's trusted web console**, display:
 cat /etc/pve/pve-root-ca.pem
 ```
 
-Copy the full PEM certificate (including its BEGIN/END lines) to a local file on the local machine, for example `~/.config/pve/pve-root-ca.pem`:
+Copy the full PEM certificate (including its BEGIN/END lines) to a local file on the local machine, for example `~/.config/proxmox/pve-root-ca.pem`:
 
 ```bash
 mkdir -p ~/.config/proxmox
@@ -163,58 +210,51 @@ nano ~/.config/proxmox/pve-root-ca.pem
 
 This establishes TLS trust for Terraform's API connection. Verify the certificate through the trusted Proxmox console; do not disable TLS verification.
 
-## 3. Configure and run Terraform
+## 3. Configure and run Terraform with `deploy.sh`
 
-On the **local machine**, enter:
-
-```bash
-cd infrastructure/terraform
-cp terraform.tfvars.example terraform.tfvars
-nano terraform.tfvars
-```
-
-Set the actual configuration values:
-
-| Variable | Value to supply |
-| --- | --- |
-| `create_vm` | `true` |
-| `node_name` | Exact Proxmox node name |
-| `vm_id`, `vm_name` | Free VM ID and desired name |
-| `cpu_cores`, `memory_mb`, `disk_gb` | Desired capacity |
-| `datastore_id` | Storage containing the image and new VM disk |
-| `network_bridge` | The `SDN_VNET` ID created in step 2 |
-| `vm_ipv4_cidr`, `vm_gateway` | IP **with CIDR** and gateway from the NAT subnet in step 2 |
-| `vm_username` | Ubuntu SSH username |
-| `ssh_public_key_path` | `~/.ssh/id_ed25519.pub` |
-| `download_cloud_image` | `false` |
-| `cloud_image_file_id` | Exact Proxmox file ID from step 2 |
-
-Replace the environment-specific values in the copied example, including the node name, VM identity, address and username. Choose an unused VM ID and IP that satisfy the safety checks in `main.tf`. Do **not** point the configuration at a VM already in use.
-
-Configure API access in the **same Linux shell** (enter the real endpoint and token ID):
+On your **local Ubuntu/Linux machine**, from the repository root:
 
 ```bash
-export PROXMOX_VE_ENDPOINT="https://PROXMOX_HOST:8006/"
-export SSL_CERT_FILE="$HOME/.config/proxmox/pve-root-ca.pem"
-export API_TOKEN_ID="USER@REALM!terraform"
-read -rsp "Proxmox API token secret: " API_TOKEN_SECRET; echo
-export PROXMOX_VE_API_TOKEN="$API_TOKEN_ID=$API_TOKEN_SECRET"
-unset API_TOKEN_SECRET
+cp infrastructure/terraform/terraform.tfvars.example infrastructure/terraform/terraform.tfvars
+nano infrastructure/terraform/terraform.tfvars
 ```
 
-Provision the Ubuntu VM:
+Set `create_vm = true` only once you've obtained approval for an **unused** VM ID and static IP. Confirm the Proxmox node name, `datastore_id`, `network_bridge`, `vm_ipv4_cidr`, `vm_gateway`, `vm_username`, VM sizing and SSH public-key path. This bootcamp's `nat0` VNet uses zone `studnat`; the gateway `10.10.10.1` is an **environment-specific value**, not a Proxmox default. The Ubuntu user is created by Cloud-Init and is independent of the Proxmox API user.
+
+The image was pre-staged at `local:import/job-market-noble-server-cloudimg-amd64.qcow2`, so use:
+
+```hcl
+download_cloud_image = false
+cloud_image_file_id  = "local:import/job-market-noble-server-cloudimg-amd64.qcow2"
+```
+
+Make sure the Proxmox CA file from Section 2 exists at `~/.config/proxmox/pve-root-ca.pem`. Then run:
 
 ```bash
-terraform init
-terraform fmt -check
-terraform validate
-terraform plan -out=vm.tfplan
-terraform apply vm.tfplan
+chmod +x deploy.sh
+./deploy.sh
 ```
 
-Check that the planned changes affect **only the intended VM** before applying. Terraform creates the VM from the staged Cloud Image, sets its static IP, configures the Ubuntu username and SSH public key through Cloud-Init, and starts the VM.
+The script uses the current lab's Proxmox API host and token ID as **non-secret defaults**. To use a different Proxmox host/account without editing the script:
 
-**Keep** the local `terraform.tfvars` and `terraform.tfstate` for subsequent runs. Changing `create_vm` to `false` while a VM is managed by that state can plan its destruction.
+```bash
+PROXMOX_HOST=YOUR_PROXMOX_HOST \
+PROXMOX_TOKEN_ID='USER@REALM!terraform' ./deploy.sh
+```
+
+Enter **only the token secret** at the prompt—not `USER@REALM!terraform=SECRET`. The script constructs `PROXMOX_VE_API_TOKEN` in its own process, verifies the local CA file and `terraform.tfvars`, runs `terraform init`, `fmt -check`, `validate`, and saves `vm.tfplan` with `terraform plan`. After reviewing the plan, type `apply` to execute that exact saved plan. Running `./deploy.sh` does **not** leave credentials in your interactive shell.
+
+**Avoid duplicated configuration:** `terraform.tfvars` is now the single source of truth for `vm_id`, `vm_ipv4_cidr` and other Terraform inputs; `deploy.sh` intentionally does not override them with `-var`. Re-running with the same local Terraform state should produce no changes. **Back up the state** securely and do not commit `terraform.tfvars`, `vm.tfplan`, the state or credentials. Never set `create_vm = false` to “skip provisioning”: Terraform would plan to destroy an already-managed VM. Review destructive changes before approving.
+
+Common errors:
+
+- `curl (77)` or certificate errors: trusted Proxmox CA file missing/unreadable or incorrect.
+- HTTP `401`: token ID or secret incorrect. Supply only the secret to this script.
+- HTTP `403` on VM creation: verify effective `VM.Allocate`, `Datastore.AllocateSpace` and `SDN.Use` permissions (Section 2).
+- “Refusing to override existing file”: image is already staged; keep `download_cloud_image = false` and reference its file ID.
+- VM `101` already exists outside the current Terraform state: do not overwrite or adopt it automatically. Check the VM ownership and state first.
+
+The current Ubuntu URL uses `noble/current`, which can change; **for bit-for-bit reproducibility**, pin a dated/released image and verify its checksum before distributing the environment setup.
 
 ## 4. Configure SSH access to the new VM
 
@@ -262,7 +302,7 @@ Exit the guest session to return to the local Linux shell.
 From the **local machine**:
 
 ```bash
-cd ../ansible
+cd infrastructure/ansible
 cat > inventory.ini <<'EOF'
 [k3s_servers]
 k3s-vm ansible_connection=ssh ansible_python_interpreter=/usr/bin/python3
