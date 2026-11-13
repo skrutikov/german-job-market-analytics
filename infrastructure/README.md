@@ -8,7 +8,8 @@ Run Terraform and Ansible from a local Linux machine with this repository checke
 
 ## Deployment overview
 
-- **One-time Proxmox preparation:** stage the Ubuntu Cloud Image, verify the NAT VNet, create the restricted API token and assign its ACLs (Section 2). These actions require authorized administration on the Proxmox host.
+- **One-time Proxmox preparation:** download the Ubuntu Cloud Image, verify the NAT VNet, create the API token, and grant it the shared storage and VNet permissions (Section 2). These actions require authorized Proxmox administration.
+- **Before creating or recreating a VM:** verify and, if necessary, grant that specific VM ID's `/vms/VM_ID` ACL. On this host, destroying a VM has removed its VM-specific ACL; the shared storage/VNet permissions remain (Section 2).
 - **VM provisioning:** from a local Ubuntu/Linux machine (including WSL), configure `infrastructure/terraform/terraform.tfvars`, install the trusted Proxmox CA certificate and run `./deploy.sh` (Section 3). The script runs Terraform init, validate, plan and, **only after explicit confirmation**, apply.
 - **After provisioning:** configure the SSH jump host and run the Ansible playbook to install k3s (Sections 4–5). **`deploy.sh` does not yet install k3s or deploy the application.**
 
@@ -89,55 +90,75 @@ Replace `SDN_VNET` and the example addresses with the actual VNet ID, chosen VM 
 
 ### Create a Proxmox API token and permissions
 
-In the Proxmox web interface, go to **Datacenter → Permissions → API Tokens**. Create a token (e.g. `terraform` for `root1@pve`) with **Privilege Separation enabled** and securely save its secret. The full token ID looks like `root1@pve!terraform`. It is **not** an SSH login.
+**Two distinct kinds of permission are needed:** shared infrastructure permissions are configured once, while the permission for the **specific VM ID must be checked before creating or recreating that VM**. These are administrator tasks on the **Proxmox host**, not tasks performed by `deploy.sh`.
 
-On a shared training host, **only an authorized administrator** should create users, roles or ACLs. The following example matches this project's tested environment; verify the actual names and approved resources first:
+#### A. One-time setup: API token and shared storage/VNet permissions
 
-| ACL path | Role/privileges | Why |
+In **Datacenter → Permissions → API Tokens**, create a token (for example `terraform` owned by `root1@pve`) with **Privilege Separation** enabled. Save the token secret securely. The token ID `root1@pve!terraform` identifies the token; `deploy.sh` prompts for the complete `ID=secret` value. An API token is not an SSH login.
+
+For this bootcamp host, the shared resources and privileges are:
+
+| ACL path | Role/privileges | Purpose |
 | --- | --- | --- |
-| `/vms/101` | `PVEVMAdmin` (including `VM.Allocate`, `VM.Config.*`, `VM.PowerMgmt`) | Create and configure only VM 101 |
-| `/storage/local` | `Datastore.AllocateSpace`, `Datastore.Audit` (custom role below) | Allocate the VM disk and read the storage |
-| `/sdn/zones/studnat/nat0` | `PVESDNUser` (including `SDN.Use`) | Connect VM 101 to VNet `nat0` |
+| `/storage/local` | Custom role with `Datastore.AllocateSpace` and `Datastore.Audit` | Allocate and inspect VM disks |
+| `/sdn/zones/studnat/nat0` | `PVESDNUser` (including `SDN.Use`) | Attach VM network interfaces to `nat0` |
 
-**The SDN zone is `studnat`, not `private`, on this host.** Check with `pvesh get /cluster/sdn/vnets`. In `terraform.tfvars`, the network bridge remains `nat0` (the VNet ID).
+The actual SDN zone is **`studnat`**, not `private`; verify it with `pvesh get /cluster/sdn/vnets`. The `network_bridge` variable in `terraform.tfvars` is the VNet ID `nat0`, not its zone name.
 
-From the **Proxmox host root shell**, create a custom storage role once (skip `role add` if a role with that name already exists). Grant roles to **both** the token owner and the token; their effective privileges are intersected when privilege separation is enabled:
+On the **Proxmox root shell**, with permission to administer this shared host, run the following when setting up a new environment. Create `TerraformVMStorage` only if it does not already exist (`pveum role list`):
 
 ```bash
 TOKEN_OWNER='root1@pve'
 TOKEN_ID='root1@pve!terraform'
-VM_ID=101
 DATASTORE='local'
 SDN_ZONE='studnat'
 SDN_VNET='nat0'
 
 pveum role add TerraformVMStorage --privs "Datastore.AllocateSpace Datastore.Audit"
 
-pveum acl modify "/vms/$VM_ID" \
-    --roles PVEVMAdmin --users "$TOKEN_OWNER" --tokens "$TOKEN_ID"
 pveum acl modify "/storage/$DATASTORE" \
     --roles TerraformVMStorage --users "$TOKEN_OWNER" --tokens "$TOKEN_ID"
 pveum acl modify "/sdn/zones/$SDN_ZONE/$SDN_VNET" \
     --roles PVESDNUser --users "$TOKEN_OWNER" --tokens "$TOKEN_ID"
 ```
 
-Verify the **effective token permissions**, rather than only the ACL assignments:
+Both the **owner** and the **privilege-separated token** must have the required privileges; Proxmox uses their effective intersection. Check these permissions (they normally survive VM deletion):
 
 ```bash
-pveum user token permissions root1@pve terraform --path /vms/101
 pveum user token permissions root1@pve terraform --path /storage/local
 pveum user token permissions root1@pve terraform --path /sdn/zones/studnat/nat0
 ```
 
-You should see `VM.Allocate`, `Datastore.AllocateSpace` and `SDN.Use` respectively. If one is missing, check the owner's permissions with `pveum user permissions root1@pve --path PATH`. Do not grant access to all VMs or the cluster root merely to fix these checks.
+Expect `Datastore.AllocateSpace` and `SDN.Use`, respectively.
 
-**Repeat deployments after destruction:** Proxmox automatically deletes the VM-specific ACLs under `/vms/101` when VM 101 is destroyed, even when the Terraform state is clean. Before recreating a VM with the same ID, check the token's permissions again and restore `PVEVMAdmin` for the owner and token on `/vms/101` if `VM.Allocate` is missing. The `/storage/local` and `/sdn/zones/studnat/nat0` ACLs are separate and normally remain intact; don't recreate their roles unnecessarily. An authorized administrator can restore the VM ACL with:
+#### B. Before each new VM creation or recreation: VM-specific permission
+
+Unlike the shared ACLs, the permission at `/vms/101` is tied to **VM ID 101**. In our test, **Proxmox removed this ACL when `destroy.sh` deleted VM 101**. Consequently, restoring the VM with `./deploy.sh` failed with **HTTP 403** until the VM ACL was granted again.
+
+Before deploying a new or previously destroyed VM, check the token's effective permission on the intended VM ID. On the **Proxmox root shell**:
 
 ```bash
-pveum acl modify /vms/101 --roles PVEVMAdmin \
-    --users root1@pve --tokens 'root1@pve!terraform'
+pveum user token permissions root1@pve terraform \
+    --path /vms/101
 ```
 
+If the output does not include `VM.Allocate`, restore permissions for this VM ID **only**:
+
+```bash
+pveum acl modify /vms/101 \
+    --roles PVEVMAdmin \
+    --users root1@pve \
+    --tokens 'root1@pve!terraform'
+```
+
+Run the first command again to verify `VM.Allocate` (and the `VM.Config.*` privileges). The example uses the approved test VM **101**, not the separately existing VM **100**. Substitute your own approved, unused VM ID for other environments. Do **not** give the token cluster-wide VM administration permissions.
+
+The essential distinction:
+
+- **One-time host setup:** create the token and configure permissions for shared storage and VNet (Section A).
+- **Per-VM provisioning/reprovisioning:** check `/vms/VM_ID` and grant `PVEVMAdmin` there when missing (Section B). Recheck after `destroy.sh`, because VM deletion can remove this ACL.
+
+If `VM.Allocate` is still absent, check the underlying owner permissions with `pveum user permissions root1@pve --path /vms/101`. **HTTP 401** indicates an authentication issue (invalid token/secret), while **HTTP 403** generally indicates insufficient authorization.
 
 ### Create the SSH jump account
 
@@ -223,7 +244,7 @@ cloud_image_file_id = "local:import/job-market-noble-server-cloudimg-amd64.qcow2
 
 There is no `download_cloud_image` switch: Terraform only provisions the VM from the manually staged Cloud Image. If your local, Git-ignored `terraform.tfvars` still contains `download_cloud_image` or `cloud_image_url` from an older configuration, remove those lines.
 
-Make sure the Proxmox CA file from Section 2 exists at `~/.config/proxmox/pve-root-ca.pem`. Then run:
+Before running Terraform, complete **Section 2B** on the Proxmox host: the token must have `VM.Allocate` on the chosen VM ID (including after a previous `destroy.sh`). Make sure the Proxmox CA file from Section 2 exists at `~/.config/proxmox/pve-root-ca.pem`. Then run:
 
 ```bash
 chmod +x deploy.sh
@@ -263,7 +284,7 @@ chmod +x destroy.sh
 
 The script asks for the **full Proxmox API token** (as `deploy.sh` does), verifies that `proxmox_virtual_environment_vm.k3s[0]` is present in the Terraform state, and checks that its managed VM ID matches `vm_id` in `terraform.tfvars`. It rejects a mismatch and explicitly refuses VM `100`. It then prepares a **targeted Terraform destroy plan for that VM**, displays it, and requires the exact confirmation `destroy VM_ID` (for example, `destroy 101`) before applying. You should still review the plan carefully.
 
-**Important:** `destroy.sh` does **not** search Proxmox for any VM with a matching numeric ID. It can only destroy the VM already managed by your current Terraform state. Do not delete your state to “reset” the project; losing it would prevent Terraform from tracking the existing VM. A VM's disks/data are deleted when it is destroyed. The manually downloaded Cloud Image and NAT networking are left alone. **Proxmox automatically removes the destroyed VM's `/vms/VM_ID` ACL entries**, so before the next `./deploy.sh`, re-grant that VM's permissions as described in Section 2; storage and VNet ACLs normally remain unchanged.
+**Important:** `destroy.sh` does **not** search Proxmox for any VM with a matching numeric ID. It can only destroy the VM already managed by your current Terraform state. Do not delete your state to “reset” the project; losing it would prevent Terraform from tracking the existing VM. A VM's disks/data are deleted when it is destroyed. The manually downloaded Cloud Image and NAT networking are left alone. **In this test, Proxmox removed the destroyed VM's `/vms/101` ACL**, so before the next `./deploy.sh`, follow **Section 2B** to verify and restore the VM-specific permission; shared storage/VNet ACLs normally remain unchanged.
 
 Do not set `create_vm = false` as a substitute for `destroy.sh`: that could make a later `./deploy.sh` plan destruction without the extra VM-ID confirmation.
 
