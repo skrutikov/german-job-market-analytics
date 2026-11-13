@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Provision the Ubuntu VM with Terraform.
-# Proxmox bootstrap, SSH jump-host setup, k3s and app deployment are documented
-# in infrastructure/README.md; they are not yet performed by this script.
+# Provision the Ubuntu VM with Terraform, then install/configure k3s with Ansible.
+# Proxmox bootstrap and the restricted SSH jump account must be prepared first
+# as documented in infrastructure/README.md. App deployment is a later step.
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TF_DIR="$REPO_ROOT/infrastructure/terraform"
+ANSIBLE_DIR="$REPO_ROOT/infrastructure/ansible"
 
 # Non-secret defaults for the current bootcamp environment; override with
 # PROXMOX_HOST=... ./deploy.sh on other installations.
 PROXMOX_HOST="${PROXMOX_HOST:-195.154.103.231}"
+JUMP_USER="${JUMP_USER:-jumpuser}"
 export PROXMOX_VE_ENDPOINT="${PROXMOX_VE_ENDPOINT:-https://${PROXMOX_HOST}:8006/}"
 export SSL_CERT_FILE="${SSL_CERT_FILE:-$HOME/.config/proxmox/pve-root-ca.pem}"
 
@@ -19,6 +21,19 @@ if [[ ! -r "$SSL_CERT_FILE" ]]; then
 fi
 if [[ ! -f "$TF_DIR/terraform.tfvars" ]]; then
     echo "ERROR: Create $TF_DIR/terraform.tfvars from terraform.tfvars.example first." >&2
+    exit 1
+fi
+
+# Check Ansible prerequisites before provisioning; avoid leaving a newly created
+# VM when the controller is missing required local tools.
+for program in ssh ansible ansible-playbook; do
+    if ! command -v "$program" >/dev/null 2>&1; then
+        echo "ERROR: $program is required to install k3s. See infrastructure/README.md." >&2
+        exit 1
+    fi
+done
+if [[ ! -f "$ANSIBLE_DIR/install-k3s.yml" ]]; then
+    echo "ERROR: Missing $ANSIBLE_DIR/install-k3s.yml" >&2
     exit 1
 fi
 
@@ -48,3 +63,77 @@ if [[ "$CONFIRM" != "apply" ]]; then
 fi
 
 terraform -chdir="$TF_DIR" apply vm.tfplan
+
+# Use Terraform outputs so the VM address, username and SSH key cannot drift
+# from terraform.tfvars. The private key is the sibling of the .pub key.
+VM_ID="$(terraform -chdir="$TF_DIR" output -raw managed_vm_id)"
+VM_CIDR="$(terraform -chdir="$TF_DIR" output -raw managed_vm_ipv4)"
+VM_IP="${VM_CIDR%%/*}"
+VM_USER="$(terraform -chdir="$TF_DIR" output -raw managed_vm_username)"
+SSH_PUBLIC_KEY="$(terraform -chdir="$TF_DIR" output -raw managed_vm_ssh_public_key_path)"
+if [[ "$SSH_PUBLIC_KEY" != *.pub ]]; then
+    echo "ERROR: Public SSH key path must end in .pub: $SSH_PUBLIC_KEY" >&2
+    exit 1
+fi
+SSH_PRIVATE_KEY="${SSH_PUBLIC_KEY%.pub}"
+if [[ ! -r "$SSH_PRIVATE_KEY" ]]; then
+    echo "ERROR: Matching SSH private key not found: $SSH_PRIVATE_KEY" >&2
+    exit 1
+fi
+if [[ ! "$VM_IP" =~ ^[0-9]+(\.[0-9]+){3}$ ||
+      ! "$VM_USER" =~ ^[a-z_][a-z0-9_-]*\$?$ ||
+      ! "$JUMP_USER" =~ ^[a-z_][a-z0-9_-]*\$?$ ]]; then
+    echo "ERROR: Unexpected IP or SSH username in Terraform configuration." >&2
+    exit 1
+fi
+
+echo "Waiting for SSH to VM $VM_ID ($VM_USER@$VM_IP) through $JUMP_USER@$PROXMOX_HOST..."
+echo "On first connection, verify host-key fingerprints against the trusted Proxmox and VM consoles."
+SSH_OPTS=(
+    -i "$SSH_PRIVATE_KEY"
+    -o IdentitiesOnly=yes
+    -o ConnectTimeout=10
+    -o ConnectionAttempts=1
+    -o StrictHostKeyChecking=ask
+    -o PasswordAuthentication=no
+    -o KbdInteractiveAuthentication=no
+    -J "$JUMP_USER@$PROXMOX_HOST"
+)
+SSH_READY=false
+for attempt in {1..18}; do
+    if ssh "${SSH_OPTS[@]}" "$VM_USER@$VM_IP" true; then
+        SSH_READY=true
+        break
+    fi
+    echo "SSH not ready (attempt $attempt/18). Retrying..."
+    sleep 5
+done
+if [[ "$SSH_READY" != true ]]; then
+    echo "ERROR: Cannot reach VM $VM_ID through the SSH jump account." >&2
+    echo "Verify jumpuser forwarding, port 22, SSH keys and host-key fingerprints (README Section 4)." >&2
+    echo "The VM is already managed by Terraform; rerun ./deploy.sh after fixing SSH." >&2
+    exit 1
+fi
+
+echo "Waiting for Ubuntu Cloud-Init to finish..."
+ssh "${SSH_OPTS[@]}" "$VM_USER@$VM_IP" "cloud-init status --wait"
+
+# Temporary inventory: no duplicate VM IP/user settings or committed credentials.
+INVENTORY="$(mktemp)"
+trap 'rm -f "$INVENTORY"' EXIT
+cat > "$INVENTORY" <<EOF
+[k3s_servers]
+k3s-vm ansible_host=$VM_IP ansible_user=$VM_USER ansible_python_interpreter=/usr/bin/python3 ansible_ssh_common_args='-o ProxyJump=$JUMP_USER@$PROXMOX_HOST'
+EOF
+
+export ANSIBLE_HOST_KEY_CHECKING=True
+echo "Checking Ansible connectivity..."
+ansible -i "$INVENTORY" k3s_servers --private-key "$SSH_PRIVATE_KEY" -m ping
+
+echo "Installing/configuring k3s on VM $VM_ID with Ansible..."
+ansible-playbook -i "$INVENTORY" --private-key "$SSH_PRIVATE_KEY" "$ANSIBLE_DIR/install-k3s.yml"
+
+echo "Verifying k3s node and namespaces..."
+ssh "${SSH_OPTS[@]}" "$VM_USER@$VM_IP" "sudo -n k3s kubectl get nodes && sudo -n k3s kubectl get namespaces"
+echo "Deployment complete: VM $VM_ID is running k3s."
+
