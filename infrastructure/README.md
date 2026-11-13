@@ -47,7 +47,7 @@ test -f ~/.ssh/id_ed25519.pub || ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
 
 ## 2. Prepare Proxmox
 
-### Upload the Ubuntu Cloud Image
+### Download the Ubuntu Cloud Image
 
 In the Proxmox web interface, open **Datacenter → Storage** and ensure the selected datastore allows **Import** content.
 
@@ -62,7 +62,7 @@ On the Proxmox **host** shell, confirm that the image is available:
 pvesm list local --content import
 ```
 
-Set its identifier (the string beginning with `local:import/`) as the value of `cloud_image_file_id` in `infrastructure/terraform/terraform.tfvars`. If the image is **already present**, reuse it: set `download_cloud_image = false`. Do not attempt to download to the same filename with `overwrite = false`. `qemu-img info` can confirm the QCOW2 format but does not by itself guarantee a complete download; verify the source/checksum when preparing a new image.
+Set its identifier (the string beginning with `local:import/`) as the value of `cloud_image_file_id` in `infrastructure/terraform/terraform.tfvars`. If the image is **already present**, reuse it instead of downloading again. `qemu-img info` can confirm the QCOW2 format but does not by itself guarantee a complete download; verify the source/checksum when preparing a new image. **Image download happens manually through the Proxmox web interface, not through Terraform.**
 
 ### Configure a private network with NAT
 
@@ -130,20 +130,6 @@ pveum user token permissions root1@pve terraform --path /sdn/zones/studnat/nat0
 ```
 
 You should see `VM.Allocate`, `Datastore.AllocateSpace` and `SDN.Use` respectively. If one is missing, check the owner's permissions with `pveum user permissions root1@pve --path PATH`. Do not grant access to all VMs or the cluster root merely to fix these checks.
-
-**Optional: automated Cloud Image download.** Normally keep `download_cloud_image = false` and reuse the staged image. To set it to `true` on a fresh host, the token and its owner also need `Datastore.AllocateTemplate` on `/storage/local` **and** `Sys.AccessNetwork` on `/nodes/NODE_NAME`. The latter lets Proxmox fetch remote URLs and must be granted deliberately; it is preferable to broad `Sys.Modify` permissions. Example for authorized administrators:
-
-```bash
-NODE_NAME='B2C-DevOps-Inter-Bootcamp-SEP26-group-5'
-pveum role add TerraformImageDownload --privs "Datastore.AllocateTemplate"
-pveum role add TerraformNetworkDownload --privs "Sys.AccessNetwork"
-pveum acl modify "/storage/$DATASTORE" \
-    --roles TerraformImageDownload --users "$TOKEN_OWNER" --tokens "$TOKEN_ID"
-pveum acl modify "/nodes/$NODE_NAME" \
-    --roles TerraformNetworkDownload --users "$TOKEN_OWNER" --tokens "$TOKEN_ID"
-```
-
-Run `pveum role list` before creating any already-existing roles. Avoid importing or overwriting a shared image without confirming who owns it. A Proxmox `403` means the token authenticated but lacks permission; a `401` indicates authentication failure.
 
 ### Create the SSH jump account
 
@@ -221,12 +207,13 @@ nano infrastructure/terraform/terraform.tfvars
 
 Set `create_vm = true` only once you've obtained approval for an **unused** VM ID and static IP. Confirm the Proxmox node name, `datastore_id`, `network_bridge`, `vm_ipv4_cidr`, `vm_gateway`, `vm_username`, VM sizing and SSH public-key path. This bootcamp's `nat0` VNet uses zone `studnat`; the gateway `10.10.10.1` is an **environment-specific value**, not a Proxmox default. The Ubuntu user is created by Cloud-Init and is independent of the Proxmox API user.
 
-The image was pre-staged at `local:import/job-market-noble-server-cloudimg-amd64.qcow2`, so use:
+After downloading the image through the Proxmox web interface (Section 2), reference the existing image in Terraform:
 
 ```hcl
-download_cloud_image = false
-cloud_image_file_id  = "local:import/job-market-noble-server-cloudimg-amd64.qcow2"
+cloud_image_file_id = "local:import/job-market-noble-server-cloudimg-amd64.qcow2"
 ```
+
+There is no `download_cloud_image` switch: Terraform only provisions the VM from the manually staged Cloud Image. If your local, Git-ignored `terraform.tfvars` still contains `download_cloud_image` or `cloud_image_url` from an older configuration, remove those lines.
 
 Make sure the Proxmox CA file from Section 2 exists at `~/.config/proxmox/pve-root-ca.pem`. Then run:
 
@@ -250,7 +237,7 @@ Common errors:
 - `curl (77)` or certificate errors: trusted Proxmox CA file missing/unreadable or incorrect.
 - HTTP `401`: token ID or secret incorrect. Paste the full `USER@REALM!TOKEN=SECRET` value into this script.
 - HTTP `403` on VM creation: verify effective `VM.Allocate`, `Datastore.AllocateSpace` and `SDN.Use` permissions (Section 2).
-- “Refusing to override existing file”: image is already staged; keep `download_cloud_image = false` and reference its file ID.
+- “Refusing to override existing file” during image download: the image already exists on Proxmox; reuse its file ID instead of downloading it again.
 - VM `101` already exists outside the current Terraform state: do not overwrite or adopt it automatically. Check the VM ownership and state first.
 
 The current Ubuntu URL uses `noble/current`, which can change; **for bit-for-bit reproducibility**, pin a dated/released image and verify its checksum before distributing the environment setup.
