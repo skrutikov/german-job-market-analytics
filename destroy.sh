@@ -42,7 +42,9 @@ if ! terraform -chdir="$TF_DIR" state list | grep -Fxq "$VM_RESOURCE"; then
     exit 1
 fi
 
-CONFIG_VM_ID="$(printf 'var.vm_id\n' | terraform -chdir="$TF_DIR" console -no-color)"
+# Terraform console can print variable warnings before the expression result.
+# Only accept a complete numeric line; fail closed if there is no VM ID.
+CONFIG_VM_ID="$(printf 'var.vm_id\n' | terraform -chdir="$TF_DIR" console -no-color | awk '/^[0-9]+$/ { id=$0 } END { print id }')"
 MANAGED_VM_ID="$(terraform -chdir="$TF_DIR" output -raw managed_vm_id)"
 if [[ ! "$CONFIG_VM_ID" =~ ^[0-9]+$ || ! "$MANAGED_VM_ID" =~ ^[0-9]+$ ||
       "$CONFIG_VM_ID" != "$MANAGED_VM_ID" || "$MANAGED_VM_ID" == "100" ]]; then
