@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - postgres.yaml
+  - elasticsearch.yaml
+  - application.yaml
+  - airflow.yaml
+  - monitoring.yaml
+  - data-update.yaml
+configMapGenerator:
+  - name: job-market-settings
+    literals:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - PUSHGATEWAY_URL=http://pushgateway:9091
+      - FASTAPI_URL=http://backend:8000
+      - FRONTEND_PORT=8050
+      - DASH_DEBUG=false
+  - name: nginx-config
+    files:
+      - nginx.conf=config/nginx.conf
+  - name: prometheus-config
+    files:
+      - prometheus.yml=config/prometheus.yml
+      - alerts.yml=config/alerts.yml
+  - name: alertmanager-config
+    files:
+      - alertmanager.yml=config/alertmanager.yml
+  - name: grafana-datasources
+    files:
+      - prometheus.yml=config/grafana-datasources.yml
+  - name: grafana-providers
+    files:
+      - dashboards.yml=config/grafana-dashboards.yml
+  - name: grafana-dashboard
+    files:
+      - job-market-dashboard.json=config/job-market-dashboard.json

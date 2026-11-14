@@ -1,0 +1,45 @@
+# This CronJob is suspended: Airflow owns the scheduled ETL.
+# Use "kubectl create job --from=cronjob/data-update ..." for a manual run.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: data-update
+spec:
+  schedule: "0 6 * * *"
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 14400
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: data-update
+              image: ghcr.io/skrutikov/german-job-market-analytics:dev
+              command: [python, -m, "job_market.etl.etl.etl"]
+              envFrom:
+                - configMapRef:
+                    name: job-market-settings
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: job-market-secrets
+                      key: DATABASE_URL
+              volumeMounts:
+                - name: data
+                  mountPath: /app/data
+              resources:
+                requests:
+                  cpu: 150m
+                  memory: 256Mi
+                limits:
+                  memory: 1Gi
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: etl-data
