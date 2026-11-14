@@ -89,40 +89,69 @@ sudo k3s kubectl -n dev logs deployment/airflow
 sudo k3s kubectl -n dev get events --sort-by=.lastTimestamp
 ```
 
-## 4. Access the application through SSH
+## 4. Access from local WSL (one background SSH tunnel)
 
-The VM is on a private address. Use local-only port forwarding to avoid publishing administrative services.
-
-On the VM (leave running):
+The cluster runs on a private VM. Use the root-level **`kubernetes_start.sh`** utility from your **local WSL shell** (e.g. `root@Seryoga-MC`), **not inside the Ubuntu VM**. It uses your existing `liora-vm100` SSH alias and the restricted Proxmox jump host.
 
 ```bash
-sudo k3s kubectl -n dev port-forward service/nginx 8088:80 --address 127.0.0.1
+cd ~/german-job-market-analytics
+git fetch origin
+git switch kubernetes-deployment
+git pull
+
+./kubernetes_start.sh dev
 ```
 
-In a separate WSL terminal, using the already-configured SSH alias:
+The script discovers the Kubernetes Service ClusterIPs through SSH, establishes **one detached SSH tunnel** with several localhost-only port forwards, verifies the Nginx endpoint, and prints URLs and the current Grafana, Airflow and PostgreSQL credentials. The script **does not deploy, restart, or expose any pods publicly**; the cluster must already have been deployed by `kubernetes/deploy.sh` on the VM.
+
+| Service | Local URL for dev |
+|---|---|
+| Dash | `http://127.0.0.1:8088/` |
+| FastAPI Swagger | `http://127.0.0.1:8088/api/docs` |
+| Airflow | `http://127.0.0.1:18080/` |
+| Grafana | `http://127.0.0.1:13000/` |
+| Prometheus | `http://127.0.0.1:19090/` |
+| Alertmanager | `http://127.0.0.1:19093/` |
+| Elasticsearch | `http://127.0.0.1:19200/` |
+| Pushgateway | `http://127.0.0.1:19091/` |
+
+The script retrieves credentials from the running cluster via `sudo -n k3s kubectl`. This requires the VM user to have **passwordless sudo for kubectl**, as configured by Cloud-Init in our deployment. Airflow's default Simple Auth Manager stores its generated password in its Airflow state PVC; Grafana and PostgreSQL passwords are in the namespace-scoped `job-market-secrets` Secret.
+
+**Keep the terminal output private:** the generated passwords appear on screen but are not written to a local file. Do not paste or capture that output in logs. The script never prints the database URL containing the password.
+
+Tunnel management from WSL:
+
+```bash
+./kubernetes_start.sh dev          # Start, or reuse an existing tunnel, and show URLs/passwords
+./kubernetes_start.sh dev status   # Check tunnel status
+./kubernetes_stop.sh dev           # Stop just this tunnel
+```
+
+The background SSH process remains alive when the starting terminal closes, **as long as the local WSL instance continues running**. After restarting WSL or rebooting, run the start command again. If you previously opened `ssh -N -L ...` manually using the same WSL ports, stop it with Ctrl+C first. You can also stop old `kubectl port-forward` commands on the VM; the new script does not use them.
+
+This approach forwards directly from the Ubuntu VM to its Kubernetes ClusterIP Services, avoiding long-running `kubectl port-forward` terminals. It depends on Service IPs being reachable from the k3s node, which is supported by this cluster's networking setup. If networking changes, stop and restart the tunnel to discover the current Service IPs. All locally exposed ports are explicitly bound to `127.0.0.1`.
+
+You can override the SSH destination (default `liora-vm100`) using `JOB_MARKET_VM_SSH_HOST=your-ssh-alias ./kubernetes_start.sh dev`.
+
+The `prod` overlay, if deployed, can be accessed separately using `./kubernetes_start.sh prod`; it uses different local ports to avoid collisions. Do not deploy both full environments on this VM unless its capacity permits it.
+
+### Manual fallback
+
+If the single SSH tunnel cannot reach the ClusterIP Services, the older two-hop method remains available. On the **VM**:
+
+```bash
+sudo k3s kubectl -n dev port-forward svc/nginx 8088:80
+```
+
+Then from a separate **local WSL** terminal:
 
 ```bash
 ssh -N -L 8088:127.0.0.1:8088 liora-vm100
 ```
 
-Open `http://127.0.0.1:8088` (Dash) or `http://127.0.0.1:8088/api/docs` (FastAPI). You can test from WSL:
+The manual forwarding processes must remain running. This fallback is separate from `kubernetes_start.sh`.
 
-```bash
-curl -f http://127.0.0.1:8088/api/health
-```
-
-The same two-hop forwarding method works with `service/airflow` (8080), `service/grafana` (3000), `service/prometheus` (9090) and `service/alertmanager` (9093).
-
-For Airflow standalone, the admin password is generated and stored on its persistent volume:
-
-```bash
-sudo k3s kubectl -n dev exec deployment/airflow -- \
-  cat /opt/airflow/state/simple_auth_manager_passwords.json.generated
-```
-
-Grafana's username is `admin` and its password is in the namespace's `job-market-secrets` Secret. Keep both credentials private.
-
-The optional Traefik Ingress hosts (`job-market-dev.test` and `job-market.test`) are example names, not public DNS records. They require an accessible ingress controller and suitable routing/DNS. Port forwarding is the recommended access method for the private VM.
+The optional Traefik Ingress hosts (`job-market-dev.test` and `job-market.test`) are example names, not public DNS records; they require suitable routing and DNS.
 
 ## 5. Run ETL
 
