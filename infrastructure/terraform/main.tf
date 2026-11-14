@@ -1,16 +1,17 @@
 # Proxmox API credentials come from PROXMOX_VE_ENDPOINT and PROXMOX_VE_API_TOKEN.
 # Use a verified Proxmox CA (for example SSL_CERT_FILE=/etc/pve/pve-root-ca.pem).
-# This configuration never manages host-level networking or the existing VM 100.
+# This configuration never manages host-level networking. A manually created VM
+# with ID 100 must be backed up and REMOVED before Terraform can create VM 100.
 provider "proxmox" {}
 
-# NEW Ubuntu 24.04 VM from a QCOW2 cloud image, not a clone of VM 100.
-# create_vm defaults to false. VM 100 remains untouched.
+# NEW Ubuntu 24.04 VM 100 from a QCOW2 cloud image (not a clone).
+# create_vm defaults to false. This resource must NOT adopt an existing VM.
 resource "proxmox_virtual_environment_vm" "k3s" {
   count = var.create_vm ? 1 : 0
 
   name        = var.vm_name
   description = "Job Market Ubuntu Cloud-Init VM - managed by Terraform"
-  tags        = ["group3", "terraform", "ubuntu", "test"]
+  tags        = ["group3", "terraform", "ubuntu", "k3s"]
   node_name   = var.node_name
   vm_id       = var.vm_id
 
@@ -76,15 +77,22 @@ resource "proxmox_virtual_environment_vm" "k3s" {
   }
 
   lifecycle {
-    # Guard against accidentally pointing this NEW resource at the running VM.
+    # Creating VM 100 is intentional, but only after the old manual VM is gone.
+    # Provider/API will reject a duplicate VM ID; check qm list and Terraform
+    # state first. Terraform must never silently import or delete that old VM.
     precondition {
-      condition     = var.vm_id > 0 && var.vm_id != 100
-      error_message = "This configuration is for a separate VM; VM ID 100 is the existing manually installed Kubernetes VM."
+      condition     = var.vm_id >= 100
+      error_message = "Use an approved Proxmox VM ID (100 or greater)."
     }
 
     precondition {
-      condition     = var.vm_ipv4_cidr != "" && var.vm_ipv4_cidr != "10.10.10.20/24" && var.vm_gateway != ""
-      error_message = "Specify an approved unused IP/CIDR and gateway; do not reuse VM 100's 10.10.10.20/24 address."
+      condition     = var.vm_ipv4_cidr != "" && var.vm_gateway != ""
+      error_message = "Specify an approved, available VM IP/CIDR and gateway."
+    }
+
+    precondition {
+      condition     = var.vm_id != 100 || var.vm_ipv4_cidr == "10.10.10.20/24"
+      error_message = "For replacement VM 100, use its approved IP 10.10.10.20/24."
     }
   }
 }
