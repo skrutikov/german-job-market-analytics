@@ -7,7 +7,7 @@ This playbook configures the **existing** Ubuntu VM (`group3-ubuntu01`, `10.10.1
 - The manually provisioned **VM 100** (`group3-ubuntu01`, `10.10.10.20`) runs Ubuntu 24.04.5 LTS, with 4 vCPUs, approximately 16 GB RAM, and a 30 GB virtual disk.
 - k3s `v1.36.5+k3s1` was **initially installed manually**. Kubernetes reports the single control-plane node as **Ready**.
 - The playbook was first run **locally on VM 100** and repeated without changes.
-- **Verified on 11 November 2026:** the same playbook also ran **remotely from Ubuntu WSL** over an instructor-approved SSH jump account on the Proxmox host. The remote run completed with `ok=10 changed=0 unreachable=0 failed=0 skipped=2`.
+- **Verified on 11 November 2026:** the same playbook also ran **remotely from Ubuntu WSL** via the then-configured `group3jump` SSH gateway account on the Proxmox host. The remote run completed with `ok=10 changed=0 unreachable=0 failed=0 skipped=2`. The current `deploy.sh` instead defaults to `jumpuser`; successful forwarding using this account has not yet been verified.
 - The two skipped tasks were the fresh-host installer download and installation, because k3s was already present.
 - The `dev` and `prod` namespaces are maintained by `files/namespaces.yaml`.
 
@@ -26,22 +26,22 @@ Existing k3s installations are **not reinstalled or upgraded**. The version sett
 
 The playbook does not manage Proxmox host networking or storage, create VMs, deploy the Job Market Analytics application, or configure Kubernetes ingress.
 
-## Run remotely from WSL through Proxmox (tested, preferred)
+## Run remotely from WSL through Proxmox
 
-The private VM address `10.10.10.20` is not directly reachable from WSL. We now have **instructor-approved** SSH gateway access, so Ansible runs on the WSL machine and reaches the Ubuntu guest via:
+The private VM address `10.10.10.20` is not directly reachable from WSL. For the **current configuration**, Ansible runs on WSL through the instructor-approved Proxmox SSH gateway account named `jumpuser`:
 
 ```text
-WSL (Ansible controller) -> Proxmox (group3jump) -> VM 100 (group3@10.10.10.20)
+WSL (Ansible controller) -> Proxmox (jumpuser) -> VM 100 (group3@10.10.10.20)
 ```
 
-The Proxmox Linux SSH gateway account `group3jump` is **not** the Proxmox web/API identity `root1@pve`. It does not require sudo privileges. The private SSH key stays on WSL; only the public key is authorized on the gateway and guest. The Proxmox SSH host key was separately verified against the trusted web console before use.
+`jumpuser` is the **Proxmox gateway account**; `group3` is the **Ubuntu guest account**. Neither is the Proxmox web/API identity `root1@pve`. The gateway account does not require sudo privileges. The private SSH key stays on WSL; its corresponding public key must be authorized on the gateway and guest. The Proxmox SSH host key was previously verified against the trusted web console. The 11 November remote Ansible run used the older gateway account `group3jump`, not `jumpuser`.
 
 On **WSL** (`root@Seryoga-MC`), configure `~/.ssh/config`:
 
 ```sshconfig
 Host liora-proxmox
     HostName 195.154.103.231
-    User group3jump
+    User jumpuser
     IdentityFile ~/.ssh/id_ed25519
     IdentitiesOnly yes
 
@@ -75,7 +75,7 @@ ansible -i inventory.ini k3s_servers -m ping
 ansible-playbook -i inventory.ini install-k3s.yml --ask-become-pass
 ```
 
-The playbook asks for `group3`'s **sudo password** (become), not the Proxmox API token. The real remote run ended with:
+The playbook asks for `group3`'s **sudo password** (become), not the Proxmox API token. The **historical 11 November run via `group3jump`** ended with:
 
 ```text
 PLAY RECAP
@@ -84,7 +84,9 @@ liora-vm100 : ok=10 changed=0 unreachable=0 failed=0 skipped=2
 
 Its node report showed `group3-ubuntu01 Ready control-plane`, internal IP `10.10.10.20`, and k3s `v1.36.5+k3s1`. Ansible is not installed on the guest for this remote approach; the Ansible controller is WSL.
 
-**Gateway scope:** if the `group3jump` key is restricted with `permitopen="10.10.10.20:22"`, the same gateway can serve a rebuilt **VM 100 at the same IP**, but cannot automatically reach a different VM/IP. Confirm authorized SSH forwarding restrictions before changing the target.
+**Gateway scope:** the current `jumpuser` public key should be permitted to forward **only** to the approved destination `10.10.10.20:22` (for example with `restrict,port-forwarding,permitopen="10.10.10.20:22"` in its `authorized_keys` entry). The gateway can serve a rebuilt VM at the same IP, but cannot automatically reach a different VM/IP. Keep the approved forwarding restrictions in place.
+
+**Troubleshooting `administratively prohibited`:** if `ssh liora-vm100` reports `channel 0: open failed: administratively prohibited: open failed`, the SSH gateway accepted the key but **refused the TCP forwarding request before reaching the guest**. First check the WSL SSH config: `liora-proxmox` must use `jumpuser`, while `liora-vm100` must use `group3`. An authorized administrator can then check `/home/jumpuser/.ssh/authorized_keys` for the correct key and exact `permitopen="10.10.10.20:22"` destination, along with the effective SSH server `AllowTcpForwarding` / `PermitOpen` restrictions. Do not weaken forwarding restrictions or modify shared-host settings without instructor approval. See [infrastructure SSH jump setup](../README.md#create-the-ssh-jump-account).
 
 **After intentionally replacing VM 100:** ensure Cloud-Init creates `group3` with the WSL public key. A rebuilt guest will have a *new SSH host key*; verify its fingerprint through the trusted Proxmox console and then update the old guest entry in WSL `known_hosts` rather than blindly ignoring host-key warnings. Back up the existing VM and confirm its replacement is approved before any deletion.
 
