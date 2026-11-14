@@ -135,6 +135,8 @@ Expect `Datastore.AllocateSpace` and `SDN.Use`, respectively.
 
 #### B. Before each new VM creation or recreation: VM-specific permission
 
+**Recreating a VM:** Verify its VM-specific API permissions before provisioning. After the new guest starts, its SSH host key may also differ from the previous installation; follow the **SSH host-key security** instructions in Section 3 to verify and update the trusted key. These are separate checks, regardless of whether the previous VM was removed through Proxmox or Terraform.
+
 Unlike the shared ACLs, `/vms/VM_ID` permissions apply to **one VM ID**. Removing a VM may also remove its ACL. Consequently, **check and reassign the VM-specific permissions before each VM creation or recreation**; missing permissions can cause an HTTP 403 response.
 
 Before deploying a new or previously destroyed VM, check the token's effective permission on the intended VM ID. **Replace `VM_ID` with the intended ID** (for example, `100`). On the **Proxmox root shell**:
