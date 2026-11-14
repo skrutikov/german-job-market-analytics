@@ -70,7 +70,7 @@ FastAPI provides the application API, which is consumed by the Dash frontend. Ng
 
 ## Infrastructure deployment
 
-See [Proxmox infrastructure deployment](infrastructure/README.md) for Terraform provisioning, Ansible configuration, SSH access and Kubernetes cluster verification.
+See [Proxmox infrastructure deployment](infrastructure/README.md) for Terraform provisioning, Ansible configuration, SSH access and Kubernetes cluster verification. See [Kubernetes application deployment](kubernetes/README.md) for deploying the application and monitoring services on k3s.
 
 ## Usage
 
