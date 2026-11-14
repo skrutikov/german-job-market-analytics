@@ -1,5 +1,5 @@
 ---
-- name: Configure Group 3 single-node k3s cluster
+- name: Configure single-node k3s cluster
   hosts: k3s_servers
   become: true
   gather_facts: true
@@ -16,7 +16,7 @@
         that:
           - ansible_facts['distribution'] == 'Ubuntu'
           - ansible_facts['architecture'] == 'x86_64'
-        fail_msg: "This playbook targets the existing Group 3 Ubuntu amd64 VM only."
+        fail_msg: "This playbook requires an Ubuntu x86-64 host."
 
     - name: Check whether k3s is already installed
       ansible.builtin.stat:

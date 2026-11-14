@@ -1,10 +1,35 @@
-# Copy to terraform.tfvars only after Liora confirms the values.
-# terraform.tfvars is ignored by Git.
-create_vm       = false
-node_name       = "CHANGE_ME"
-template_vm_id  = 0
-vm_id           = 0
-vm_name         = "group3-k3s-01"
-network_bridge  = "vmbr0"
-cpu_cores       = 2
-memory_mb       = 4096
+# Copy this file to terraform.tfvars (Git-ignored), then review and update the values.
+# Do NOT commit real credentials, Terraform state or plan files.
+# Example configuration for one Ubuntu VM on the Proxmox host.
+# Change VM ID and IP to available, authorized values for your environment.
+# Terraform creates a new VM; it does not adopt existing VMs.
+
+# Safety switch: enable only after reviewing the configuration and state.
+# IMPORTANT: changing it back to false after creation would plan VM destruction.
+create_vm           = false
+node_name           = "B2C-DevOps-Inter-Bootcamp-SEP26-group-5" # Exact Proxmox node name
+vm_id               = 100                                     # Must be available on the Proxmox host
+vm_name             = "job-market-ubuntu-100"                  # Guest VM name
+
+# Choose the VM resources within your allocated quota.
+cpu_cores           = 4                # Virtual CPU cores
+cpu_type            = "x86-64-v2-AES"  # CPU model supported by the host
+memory_mb           = 16384            # RAM in MiB (16 GiB)
+disk_gb             = 30               # Boot disk size in GiB
+datastore_id        = "local"          # Proxmox storage ID (Datacenter -> Storage)
+
+# Check Datacenter -> SDN -> VNets -> your VNet -> Subnets in Proxmox.
+# The VNet and gateway must already exist; choose an approved, unused VM IP
+# within that subnet. vm_ipv4_cidr is the VM's address, NOT the subnet address.
+network_bridge      = "nat0"                 # VNet ID (not the SDN zone name)
+vm_ipv4_cidr        = "10.10.10.20/24"       # VM IPv4 address with CIDR prefix
+vm_gateway          = "10.10.10.1"          # Gateway of this particular subnet
+dns_servers         = ["1.1.1.1", "8.8.8.8"] # Public DNS: Cloudflare and Google
+
+# Cloud-Init creates this Ubuntu account inside the new VM (not on Proxmox).
+vm_username         = "group3"                  # Choose a valid Linux username
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"   # Local SSH PUBLIC key; see infrastructure/README.md
+
+# Download the Ubuntu Cloud Image manually through the Proxmox web interface.
+# Use the exact identifier shown by: pvesm list local --content import
+cloud_image_file_id = "local:import/job-market-noble-server-cloudimg-amd64.qcow2"
