@@ -188,31 +188,32 @@ test -f terraform.tfvars || cp terraform.tfvars.example terraform.tfvars
 nano terraform.tfvars
 ~~~
 
-The **historical settings used for the now-destroyed test VM 101** (do not reuse VM ID/IP without checking current allocations):
+Use these **current replacement VM 100 settings** only *after* the old VM 100 has been backed up and removed, the ID/IP are released, forwarding to `10.10.10.20:22` is authorized, and Terraform state is checked:
 
 ~~~hcl
 create_vm            = true
 node_name            = "B2C-DevOps-Inter-Bootcamp-SEP26-group-5"
-vm_id                = 101
-vm_name              = "job-market-ubuntu-101"
-cpu_cores            = 2
+vm_id                = 100
+vm_name              = "job-market-ubuntu-100"
+cpu_cores            = 4
 cpu_type             = "x86-64-v2-AES"
-memory_mb            = 4096
-disk_gb              = 16
+memory_mb            = 16384
+disk_gb              = 30
 datastore_id         = "local"
 network_bridge       = "nat0"
-vm_ipv4_cidr         = "10.10.10.21/24"
+vm_ipv4_cidr         = "10.10.10.20/24"
 vm_gateway           = "10.10.10.1"
 dns_servers          = ["1.1.1.1", "8.8.8.8"]
 vm_username          = "group3"
 ssh_public_key_path  = "~/.ssh/id_ed25519.pub"
-download_cloud_image = false
 cloud_image_file_id  = "local:import/job-market-noble-server-cloudimg-amd64.qcow2"
 ~~~
 
+The `create_vm = false` value in the checked-in example is a safety default; set it to `true` in your local `terraform.tfvars` only for the intended creation. VM 101 values below are labeled historical test results, **not active configuration**.
+
 **Before provisioning:** verify that the **old manual VM 100 has been backed up and removed**, its ID/IP are free **and assigned to our group**, and that Liora permits the 4 vCPU/16 GiB/30 GiB allocation. Do not reuse historical VM 101 settings without verifying ownership. An unanswered ping is not proof that an IP is available.
 
-**Critical Terraform state rule:** `terraform.tfvars.example` sets `create_vm = false` to prevent accidental first-time provisioning. If a **live VM is managed by this Terraform state**, keep `create_vm = true` in the local `terraform.tfvars` until you intentionally destroy it; changing to `false` and applying can propose destruction. Conversely, after destroying VM 101, leaving `create_vm = true` can propose recreating it. Always inspect `terraform state list` and `terraform plan` before applying.
+**Critical Terraform state rule:** `terraform.tfvars.example` sets `create_vm = false` to prevent accidental first-time provisioning. If a **live VM is managed by this Terraform state**, keep `create_vm = true` in the local `terraform.tfvars` until you intentionally destroy it; changing to `false` and applying can propose destruction. Conversely, a stale local `terraform.tfvars` may still refer to experimental VM 101; `deploy.sh` now requires planned VM **100** by default and refuses deletion/replacement plans. Always inspect `terraform state list` and `terraform plan` before applying.
 
 ### 5. Create and apply an exact reviewed plan
 
