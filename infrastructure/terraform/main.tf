@@ -1,11 +1,10 @@
 # Proxmox API credentials come from PROXMOX_VE_ENDPOINT and PROXMOX_VE_API_TOKEN.
 # Use a verified Proxmox CA (for example SSL_CERT_FILE=/etc/pve/pve-root-ca.pem).
-# This configuration never manages host-level networking. A manually created VM
-# with ID 100 must be backed up and REMOVED before Terraform can create VM 100.
+# Host-level networking is managed separately. The VM ID must be available.
 provider "proxmox" {}
 
-# NEW Ubuntu 24.04 VM 100 from a QCOW2 cloud image (not a clone).
-# create_vm defaults to false. This resource must NOT adopt an existing VM.
+# Provision Ubuntu 24.04 from a pre-imported QCOW2 cloud image.
+# create_vm defaults to false; Terraform does not adopt existing VMs.
 resource "proxmox_virtual_environment_vm" "k3s" {
   count = var.create_vm ? 1 : 0
 
@@ -77,9 +76,8 @@ resource "proxmox_virtual_environment_vm" "k3s" {
   }
 
   lifecycle {
-    # Creating VM 100 is intentional, but only after the old manual VM is gone.
-    # Provider/API will reject a duplicate VM ID; check qm list and Terraform
-    # state first. Terraform must never silently import or delete that old VM.
+    # The Proxmox API rejects duplicate VM IDs. Check allocations and state
+    # before creating a VM.
     precondition {
       condition     = var.vm_id >= 100
       error_message = "Use an approved Proxmox VM ID (100 or greater)."
@@ -90,9 +88,5 @@ resource "proxmox_virtual_environment_vm" "k3s" {
       error_message = "Specify an approved, available VM IP/CIDR and gateway."
     }
 
-    precondition {
-      condition     = var.vm_id != 100 || var.vm_ipv4_cidr == "10.10.10.20/24"
-      error_message = "For replacement VM 100, use its approved IP 10.10.10.20/24."
-    }
   }
 }
