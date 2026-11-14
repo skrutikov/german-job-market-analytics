@@ -6,7 +6,7 @@ Job Market is an end-to-end data-engineering project for collecting, processing,
 
 The project implements a scheduled ETL pipeline that stores raw source data, transforms and enriches job advertisements, loads them into PostgreSQL, and maintains an Elasticsearch index for full-text search. A FastAPI backend exposes the processed data to a Dash frontend for job search, geographic exploration, and statistical analysis.
 
-The complete system runs locally through Docker Compose. Airflow orchestrates the daily ingestion workflow, while Prometheus, Pushgateway, Grafana, and Alertmanager provide operational monitoring.
+The application stack runs locally through Docker Compose. Airflow orchestrates the daily ingestion workflow, while Prometheus, Pushgateway, Grafana, and Alertmanager provide operational monitoring. The repository also includes Terraform and Ansible configuration to provision a Proxmox VM and install a single-node k3s cluster; Kubernetes application deployment is a separate stage.
 
 ## Features
 
@@ -67,6 +67,10 @@ FastAPI provides the application API, which is consumed by the Dash frontend. Ng
 ├── Dockerfile
 └── requirements.txt
 ```
+
+## Infrastructure deployment
+
+See [Proxmox infrastructure deployment](infrastructure/README.md) for Terraform provisioning, Ansible configuration, SSH access and Kubernetes cluster verification.
 
 ## Usage
 
