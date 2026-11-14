@@ -17,6 +17,11 @@ spec:
       template:
         spec:
           restartPolicy: Never
+          # Match Airflow's UID/group for the shared ETL data PVC.
+          securityContext:
+            runAsUser: 50000
+            runAsGroup: 0
+            fsGroup: 0
           containers:
             - name: data-update
               image: ghcr.io/skrutikov/german-job-market-analytics:dev
