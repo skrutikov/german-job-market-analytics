@@ -47,9 +47,18 @@ fi
 CONFIG_VM_ID="$(printf 'var.vm_id\n' | terraform -chdir="$TF_DIR" console -no-color | awk '/^[0-9]+$/ { id=$0 } END { print id }')"
 MANAGED_VM_ID="$(terraform -chdir="$TF_DIR" output -raw managed_vm_id)"
 if [[ ! "$CONFIG_VM_ID" =~ ^[0-9]+$ || ! "$MANAGED_VM_ID" =~ ^[0-9]+$ ||
-      "$CONFIG_VM_ID" != "$MANAGED_VM_ID" || "$MANAGED_VM_ID" == "100" ]]; then
+      "$CONFIG_VM_ID" != "$MANAGED_VM_ID" ]]; then
     echo "ERROR: VM ID mismatch/unsafe value: terraform.tfvars=$CONFIG_VM_ID, state=$MANAGED_VM_ID." >&2
     echo "Refusing to destroy a different VM. Check terraform.tfvars and the state." >&2
+    exit 1
+fi
+
+# Extra explicit opt-in is required for our intended long-lived VM 100.
+# This cannot delete the original manually created VM: it must already be
+# tracked in THIS Terraform state to reach this point.
+if [[ "$MANAGED_VM_ID" == "100" && "${ALLOW_DESTROY_VM100:-false}" != "true" ]]; then
+    echo "ERROR: Refusing to destroy VM 100 without ALLOW_DESTROY_VM100=true." >&2
+    echo "Back up the VM first and review the state; never use this to delete the old manual VM." >&2
     exit 1
 fi
 
