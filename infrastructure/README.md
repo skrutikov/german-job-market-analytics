@@ -1,5 +1,7 @@
 # Proxmox deployment
 
+**New target: VM 100, 10.10.10.20/24, 4 vCPUs, 16 GiB RAM (16384 MiB), 30 GiB disk.** The old manually created VM 100 must be backed up and removed with approval before Terraform can create its replacement. Follow [the VM 100 rebuild runbook](VM100_REBUILD.md). Experimental VM 101 is separate; never overwrite it by accident.
+
 This guide explains how to provision an Ubuntu virtual machine on Proxmox VE using **Terraform** and configure a single-node **k3s** cluster using **Ansible**.
 
 ![Infrastructure deployment architecture](../docs/images/infrastructure.png)
@@ -133,32 +135,32 @@ Expect `Datastore.AllocateSpace` and `SDN.Use`, respectively.
 
 #### B. Before each new VM creation or recreation: VM-specific permission
 
-Unlike the shared ACLs, the permission at `/vms/101` is tied to **VM ID 101**. In our test, **Proxmox removed this ACL when `destroy.sh` deleted VM 101**. Consequently, restoring the VM with `./deploy.sh` failed with **HTTP 403** until the VM ACL was granted again.
+Unlike shared ACLs, a permission at `/vms/VM_ID` belongs to one specific VM. Historically, deleting test VM 101 removed `/vms/101` permissions. For the **replacement VM 100**, verify and, if authorized, restore permissions on `/vms/100` **after** removing the old manually created VM.
 
 Before deploying a new or previously destroyed VM, check the token's effective permission on the intended VM ID. On the **Proxmox root shell**:
 
 ```bash
 pveum user token permissions root1@pve terraform \
-    --path /vms/101
+    --path /vms/100
 ```
 
 If the output does not include `VM.Allocate`, restore permissions for this VM ID **only**:
 
 ```bash
-pveum acl modify /vms/101 \
+pveum acl modify /vms/100 \
     --roles PVEVMAdmin \
     --users root1@pve \
     --tokens 'root1@pve!terraform'
 ```
 
-Run the first command again to verify `VM.Allocate` (and the `VM.Config.*` privileges). The example uses the approved test VM **101**, not the separately existing VM **100**. Substitute your own approved, unused VM ID for other environments. Do **not** give the token cluster-wide VM administration permissions.
+Run the first command again to verify `VM.Allocate` (and the `VM.Config.*` privileges). This example now targets **VM 100**, but only after the existing manual VM has been backed up and removed with approval. Substitute a different free, approved VM ID only for a separate environment. Do **not** give the token cluster-wide VM administration permissions.
 
 The essential distinction:
 
 - **One-time host setup:** create the token and configure permissions for shared storage and VNet (Section A).
 - **Per-VM provisioning/reprovisioning:** check `/vms/VM_ID` and grant `PVEVMAdmin` there when missing (Section B). Recheck after `destroy.sh`, because VM deletion can remove this ACL.
 
-If `VM.Allocate` is still absent, check the underlying owner permissions with `pveum user permissions root1@pve --path /vms/101`. **HTTP 401** indicates an authentication issue (invalid token/secret), while **HTTP 403** generally indicates insufficient authorization.
+If `VM.Allocate` is still absent, check the underlying owner permissions with `pveum user permissions root1@pve --path /vms/100`. **HTTP 401** indicates an authentication issue (invalid token/secret), while **HTTP 403** generally indicates insufficient authorization.
 
 ### Create the SSH jump account
 
@@ -234,7 +236,7 @@ cp infrastructure/terraform/terraform.tfvars.example infrastructure/terraform/te
 nano infrastructure/terraform/terraform.tfvars
 ```
 
-Set `create_vm = true` only once you've obtained approval for an **unused** VM ID and static IP. Confirm the Proxmox node name, `datastore_id`, `network_bridge`, `vm_ipv4_cidr`, `vm_gateway`, `vm_username`, VM sizing and SSH public-key path. This bootcamp's `nat0` VNet uses zone `studnat`; the gateway `10.10.10.1` is an **environment-specific value**, not a Proxmox default. The Ubuntu user is created by Cloud-Init and is independent of the Proxmox API user.
+Set `create_vm = true` only after the old manually created **VM 100 has been backed up and removed**, and the reused VM ID/static IP are approved. Confirm the Proxmox node name, `datastore_id`, `network_bridge`, `vm_ipv4_cidr`, `vm_gateway`, `vm_username`, VM sizing and SSH public-key path. This bootcamp's `nat0` VNet uses zone `studnat`; the gateway `10.10.10.1` is an **environment-specific value**, not a Proxmox default. The Ubuntu user is created by Cloud-Init and is independent of the Proxmox API user.
 
 After downloading the image through the Proxmox web interface (Section 2), reference the existing image in Terraform:
 
@@ -257,11 +259,11 @@ The script uses the current lab's Proxmox API host as a **non-secret default**. 
 PROXMOX_HOST=YOUR_PROXMOX_HOST ./deploy.sh
 ```
 
-Paste the **complete API token** from your password manager in `USER@REALM!terraform=SECRET` format (for example `root1@pve!terraform=...`). The prompt hides what you type. The script exports `PROXMOX_VE_API_TOKEN` in its own process, verifies the local CA file and `terraform.tfvars`, runs `terraform init`, `validate`, and saves `vm.tfplan` with `terraform plan`. After reviewing the plan, type `apply` to execute the saved Terraform plan. **Once Terraform succeeds**, the script continues to SSH readiness, Cloud-Init, the existing Ansible k3s playbook, and Kubernetes verification. Running `./deploy.sh` does **not** leave credentials in your interactive shell.
+Paste the **complete API token** from your password manager in `USER@REALM!terraform=SECRET` format (for example `root1@pve!terraform=...`). The prompt hides what you type. The script exports `PROXMOX_VE_API_TOKEN` in its own process, verifies the local CA file and `terraform.tfvars`, runs `terraform init`, `validate`, and saves `vm.tfplan` with `terraform plan`. After reviewing the plan (which must contain **no deletes/replacements**), type `apply 100` to execute the saved Terraform plan; for a separate approved VM ID, an explicit `EXPECTED_VM_ID` override is required. **Once Terraform succeeds**, the script continues to SSH readiness, Cloud-Init, the existing Ansible k3s playbook, and Kubernetes verification. Running `./deploy.sh` does **not** leave credentials in your interactive shell.
 
 **SSH and Ansible prerequisites for the automated phase:** install `ansible` and `openssh-client` locally; create the SSH key from Section 1; configure the restricted `jumpuser` account and permitted forwarding on Proxmox (Section 2). The script automatically connects as `vm_username` to the **IP in `terraform.tfvars`**, via `jumpuser@$PROXMOX_HOST`. It derives the matching local private key by stripping `.pub` from `ssh_public_key_path` and creates a temporary Ansible inventory (not committed to Git). You may override the default jump username with `JUMP_USER=other_user ./deploy.sh`. No `~/.ssh/config` alias is required for the scripted deployment.
 
-**SSH host-key security:** the first SSH connection may ask you to trust the Proxmox host and/or new VM. Compare each displayed fingerprint with the key reported by the **trusted Proxmox console** or the VM console (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the corresponding host) before accepting. The script does not disable host-key checking. If you recreate the VM at the same IP, its host key will usually change: verify the new VM fingerprint from its Proxmox console first, then remove the obsolete entry (for example `ssh-keygen -R 10.10.10.21`) before rerunning the deployment. Do not blindly accept host-key changes.
+**SSH host-key security:** the first SSH connection may ask you to trust the Proxmox host and/or new VM. Compare each displayed fingerprint with the key reported by the **trusted Proxmox console** or the VM console (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the corresponding host) before accepting. The script does not disable host-key checking. If you recreate the VM at the same IP, its host key will usually change: verify the new VM fingerprint from its Proxmox console first, then remove the obsolete entry (for example `ssh-keygen -R 10.10.10.20`) before rerunning the deployment. Do not blindly accept host-key changes.
 
 **Cloud-Init exit codes:** `cloud-init status --wait` may display `status: done` but exit with code `2`, indicating recoverable errors (code `0` is success; code `1` is a fatal Cloud-Init error). The script prints `cloud-init status --long` for code `2` and continues with Ansible, while other nonzero codes stop deployment. Review any recoverable errors and correct issues relevant to networking, packages or sudo before relying on the VM.
 
@@ -277,7 +279,7 @@ Common errors:
 - HTTP `401`: token ID or secret incorrect. Paste the full `USER@REALM!TOKEN=SECRET` value into this script.
 - HTTP `403` on VM creation: verify effective `VM.Allocate`, `Datastore.AllocateSpace` and `SDN.Use` permissions (Section 2).
 - “Refusing to override existing file” during image download: the image already exists on Proxmox; reuse its file ID instead of downloading it again.
-- VM `101` already exists outside the current Terraform state: do not overwrite or adopt it automatically. Check the VM ownership and state first.
+- VM `100` already exists outside this Terraform state: **do not apply**. Follow [VM100_REBUILD.md](VM100_REBUILD.md) first. VM 101 remains a separate experimental resource.
 
 The current Ubuntu URL uses `noble/current`, which can change; **for bit-for-bit reproducibility**, pin a dated/released image and verify its checksum before distributing the environment setup.
 
@@ -290,9 +292,9 @@ chmod +x destroy.sh
 ./destroy.sh
 ```
 
-The script asks for the **full Proxmox API token** (as `deploy.sh` does), verifies that `proxmox_virtual_environment_vm.k3s[0]` is present in the Terraform state, and checks that its managed VM ID matches `vm_id` in `terraform.tfvars`. It rejects a mismatch and explicitly refuses VM `100`. It then prepares a **targeted Terraform destroy plan for that VM**, displays it, and requires the exact confirmation `destroy VM_ID` (for example, `destroy 101`) before applying. You should still review the plan carefully.
+The script asks for the **full Proxmox API token** (as `deploy.sh` does), verifies that `proxmox_virtual_environment_vm.k3s[0]` is present in the Terraform state, and checks that its managed VM ID matches `vm_id` in `terraform.tfvars`. It rejects a mismatch and requires the extra opt-in `ALLOW_DESTROY_VM100=true` to destroy a Terraform-**managed** VM 100. It then prepares a **targeted Terraform destroy plan**, displays it, and requires the exact confirmation `destroy 100` before applying. It **cannot delete the original manually created VM 100** because that VM is not in Terraform state. You should still review the plan carefully.
 
-**Important:** `destroy.sh` does **not** search Proxmox for any VM with a matching numeric ID. It can only destroy the VM already managed by your current Terraform state. Do not delete your state to “reset” the project; losing it would prevent Terraform from tracking the existing VM. A VM's disks/data are deleted when it is destroyed. The manually downloaded Cloud Image and NAT networking are left alone. **In this test, Proxmox removed the destroyed VM's `/vms/101` ACL**, so before the next `./deploy.sh`, follow **Section 2B** to verify and restore the VM-specific permission; shared storage/VNet ACLs normally remain unchanged.
+**Important:** `destroy.sh` does **not** search Proxmox for any VM with a matching numeric ID. It can only destroy the VM already managed by your current Terraform state. Do not delete your state to “reset” the project; losing it would prevent Terraform from tracking the existing VM. A VM's disks/data are deleted when it is destroyed. The manually downloaded Cloud Image and NAT networking are left alone. **In the historical VM 101 test, Proxmox removed the destroyed VM's `/vms/101` ACL**, so before the next `./deploy.sh`, follow **Section 2B** to verify and restore the VM-specific permission; shared storage/VNet ACLs normally remain unchanged.
 
 Do not set `create_vm = false` as a substitute for `destroy.sh`: that could make a later `./deploy.sh` plan destruction without the extra VM-ID confirmation.
 
