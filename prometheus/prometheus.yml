@@ -11,6 +11,7 @@ scrape_configs:
       - targets:
           - "prometheus:9090"
   - job_name: "job-market-backend"
+    metrics_path: /metrics/
     static_configs:
       - targets:
           - "backend:8000"

@@ -1,0 +1,13 @@
+groups:
+  - name: etl_alerts
+    rules:
+      - alert: ETLNotSuccessfulForTooLong
+        # 26 h × 60 min × 60 sec = 93600 seconds
+        # (26 hours: daily ETL interval of 24 hours + 2 hours tolerance)
+        expr: etl_last_success_unixtime > 0 and (time() - etl_last_success_unixtime > 93600)
+        for: 30m # check every half hour
+        labels:
+          severity: error
+        annotations:
+          summary: "ETL has not completed successfully"
+          description: "The last successful ETL run was more than 26 hours ago."
