@@ -5,13 +5,13 @@ variable "create_vm" {
 }
 
 variable "node_name" {
-  description = "Proxmox node name (verify on Liora's shared server)."
+  description = "Name of the target Proxmox node."
   type        = string
   default     = "CHANGE_ME"
 }
 
 variable "vm_id" {
-  description = "Approved unused VM ID; 100 only after existing manually created VM 100 has been removed."
+  description = "Available Proxmox VM ID (must not already exist on the target host)."
   type        = number
   default     = 100
 }
@@ -34,7 +34,7 @@ variable "cpu_cores" {
 }
 
 variable "cpu_type" {
-  description = "QEMU virtual CPU model; matches the existing Ubuntu VM by default."
+  description = "QEMU virtual CPU model supported by the target Proxmox host."
   type        = string
   default     = "x86-64-v2-AES"
 }
@@ -68,13 +68,13 @@ variable "datastore_id" {
 }
 
 variable "network_bridge" {
-  description = "Proxmox bridge; the existing project's NAT network is nat0."
+  description = "Proxmox VNet or network bridge for the VM."
   type        = string
   default     = "nat0"
 }
 
 variable "vm_ipv4_cidr" {
-  description = "Approved unused static IPv4/CIDR, e.g. 10.10.10.20/24 after VM 100 has been removed."
+  description = "Available guest IPv4/CIDR in the selected subnet."
   type        = string
   default     = "10.10.10.20/24"
 }
