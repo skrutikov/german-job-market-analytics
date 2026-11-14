@@ -263,11 +263,11 @@ At the time of this VM 101 test, guest SSH/Cloud-Init network access was not val
 
 ## SSH gateway and Ansible: what works today
 
-The approved SSH route is **WSL → Proxmox `group3jump@195.154.103.231` → VM 100 `group3@10.10.10.20`**, using WSL-held SSH keys. There is no direct WSL route to the private `10.10.10.0/24` network. The guest host was verified reachable from Proxmox on TCP port 22; the Proxmox host's SSH fingerprint was checked against its trusted browser console.
+The historical verified SSH route on 11 November was **WSL → Proxmox `group3jump@195.154.103.231` → VM 100 `group3@10.10.10.20`**, using WSL-held SSH keys. The **current** `deploy.sh` and SSH instructions use the approved gateway account **`jumpuser`**, not `group3jump`; the VM SSH username remains **`group3`**. There is no direct WSL route to the private `10.10.10.0/24` network. The guest host was verified reachable from Proxmox on TCP port 22; the Proxmox host's SSH fingerprint was checked against its trusted browser console.
 
 **Verified on 11 November 2026:** from WSL, `ansible-playbook -i inventory.ini install-k3s.yml --ask-become-pass` completed on VM 100 with `ok=10 changed=0 unreachable=0 failed=0 skipped=2`. Its installed k3s node was `Ready`. The SSH aliases, inventory and full instructions are in the [Ansible README](../ansible/README.md).
 
-The SSH gateway is **configured outside Terraform**, and authorization may restrict port forwarding to `10.10.10.20:22`. Recreating **VM 100 at the same private IP** can retain that forwarding destination, but the new guest must authorize our WSL public key via Cloud-Init and will have a new SSH host key.
+The SSH gateway is **configured outside Terraform**, and authorization may restrict port forwarding to `10.10.10.20:22`. **As of 14 November 2026**, authentication as `jumpuser` works, but forwarding to VM 100 was refused with `channel 0: open failed: administratively prohibited`. Thus the historical success via `group3jump` does **not** establish that the current `jumpuser` forwarding is working. Check the gateway key's exact `permitopen` destination and the effective SSH forwarding restrictions, without widening access to other groups' VMs. Recreating **VM 100 at the same private IP** can retain that forwarding destination, but the new guest must authorize our WSL public key via Cloud-Init and will have a new SSH host key.
 
 ## Planned rebuild of the existing VM 100 (not yet performed)
 
