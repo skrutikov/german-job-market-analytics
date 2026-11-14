@@ -26,7 +26,7 @@ fi
 
 # Check Ansible prerequisites before provisioning; avoid leaving a newly created
 # VM when the controller is missing required local tools.
-for program in ssh ansible ansible-playbook; do
+for program in ssh ansible ansible-playbook python3; do
     if ! command -v "$program" >/dev/null 2>&1; then
         echo "ERROR: $program is required to install k3s. See infrastructure/README.md." >&2
         exit 1
@@ -55,9 +55,32 @@ terraform -chdir="$TF_DIR" init -input=false
 terraform -chdir="$TF_DIR" validate
 terraform -chdir="$TF_DIR" plan -out=vm.tfplan
 
-echo "Review the plan above carefully (especially changes and destroys)."
-read -rp "Type 'apply' to apply the saved plan, or anything else to cancel: " CONFIRM
-if [[ "$CONFIRM" != "apply" ]]; then
+# Fail closed on ANY deletion/replacement (e.g. if old VM 101 remains in this
+# Terraform state). Also fail if create_vm=false yielded no target VM.
+# Do not log the plan JSON, as it may include sensitive provider values.
+if ! TARGET_VM_ID="$(terraform -chdir="$TF_DIR" show -json vm.tfplan | python3 -c '
+import json, sys
+plan = json.load(sys.stdin)
+changes = plan.get("resource_changes", [])
+danger = [c["address"] for c in changes if "delete" in c.get("change", {}).get("actions", [])]
+if danger:
+    sys.exit("Refusing a plan containing deletion/replacement: " + ", ".join(danger))
+targets = [c for c in changes if c.get("address") == "proxmox_virtual_environment_vm.k3s[0]"]
+if len(targets) != 1:
+    sys.exit("Expected one managed VM. Check create_vm=true and terraform.tfvars.")
+vm_id = targets[0].get("change", {}).get("after", {}).get("vm_id")
+if not isinstance(vm_id, int) or vm_id < 100:
+    sys.exit("Unexpected VM ID in Terraform plan.")
+print(vm_id)
+')"; then
+    echo "ERROR: Unsafe or incomplete Terraform plan; nothing was applied." >&2
+    echo "Inspect Terraform state and configuration before retrying." >&2
+    exit 1
+fi
+
+echo "Review the plan carefully. VM $TARGET_VM_ID must be unused before creating it."
+read -rp "Type 'apply $TARGET_VM_ID' to apply the saved plan, or anything else to cancel: " CONFIRM
+if [[ "$CONFIRM" != "apply $TARGET_VM_ID" ]]; then
     echo "Deployment cancelled; no Terraform changes applied."
     exit 0
 fi
