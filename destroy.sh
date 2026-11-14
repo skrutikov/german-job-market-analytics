@@ -53,12 +53,11 @@ if [[ ! "$CONFIG_VM_ID" =~ ^[0-9]+$ || ! "$MANAGED_VM_ID" =~ ^[0-9]+$ ||
     exit 1
 fi
 
-# Extra explicit opt-in is required for our intended long-lived VM 100.
-# This cannot delete the original manually created VM: it must already be
-# tracked in THIS Terraform state to reach this point.
+# Extra explicit opt-in for the configured VM 100. Only resources tracked
+# by this Terraform state can be destroyed.
 if [[ "$MANAGED_VM_ID" == "100" && "${ALLOW_DESTROY_VM100:-false}" != "true" ]]; then
     echo "ERROR: Refusing to destroy VM 100 without ALLOW_DESTROY_VM100=true." >&2
-    echo "Back up the VM first and review the state; never use this to delete the old manual VM." >&2
+    echo "Back up persistent data and review the Terraform state before deletion." >&2
     exit 1
 fi
 
