@@ -1,17 +1,15 @@
 # Copy this file to terraform.tfvars (Git-ignored), then review and update the values.
 # Do NOT commit real credentials, Terraform state or plan files.
-# This example is for a NEW Terraform-managed VM 100, replacing the old manually
-# created VM 100 ONLY AFTER its data has been backed up and that VM has been
-# removed with explicit authorization. Shutting down VM 100 is NOT sufficient.
-# Never apply Terraform while the old VM 100 exists; verify state/plan first.
-# Historical VM 101 experiments are separate and must not be overwritten.
+# Example configuration for one Ubuntu VM on the Proxmox host.
+# Change VM ID and IP to available, authorized values for your environment.
+# Terraform creates a new VM; it does not adopt existing VMs.
 
-# Safety switch: set to true only when you are ready to provision a NEW VM.
+# Safety switch: enable only after reviewing the configuration and state.
 # IMPORTANT: changing it back to false after creation would plan VM destruction.
 create_vm           = false
 node_name           = "B2C-DevOps-Inter-Bootcamp-SEP26-group-5" # Exact Proxmox node name
-vm_id               = 100                                     # Use ONLY after the old VM 100 is removed
-vm_name             = "job-market-ubuntu-100"                  # Replacement VM name
+vm_id               = 100                                     # Must be available on the Proxmox host
+vm_name             = "job-market-ubuntu-100"                  # Guest VM name
 
 # Choose the VM resources within your allocated quota.
 cpu_cores           = 4                # Virtual CPU cores
