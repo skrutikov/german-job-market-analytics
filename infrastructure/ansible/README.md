@@ -7,7 +7,7 @@ This playbook configures the **existing** Ubuntu VM (`group3-ubuntu01`, `10.10.1
 - The manually provisioned **VM 100** (`group3-ubuntu01`, `10.10.10.20`) runs Ubuntu 24.04.5 LTS, with 4 vCPUs, approximately 16 GB RAM, and a 30 GB virtual disk.
 - k3s `v1.36.5+k3s1` was **initially installed manually**. Kubernetes reports the single control-plane node as **Ready**.
 - The playbook was first run **locally on VM 100** and repeated without changes.
-- **Verified on 11 November 2026:** the same playbook also ran **remotely from Ubuntu WSL** via the then-configured `group3jump` SSH gateway account on the Proxmox host. The remote run completed with `ok=10 changed=0 unreachable=0 failed=0 skipped=2`. The current `deploy.sh` instead defaults to `jumpuser`; successful forwarding using this account has not yet been verified.
+- **Verified on 11 November 2026:** the same playbook also ran **remotely from Ubuntu WSL** via the then-configured `group3jump` SSH gateway account on the Proxmox host. The remote run completed with `ok=10 changed=0 unreachable=0 failed=0 skipped=2`. The current `deploy.sh` instead defaults to `jumpuser`; on 14 November, forwarding to **10.10.10.21:22** worked but forwarding to the desired **10.10.10.20:22** was refused.
 - The two skipped tasks were the fresh-host installer download and installation, because k3s was already present.
 - The `dev` and `prod` namespaces are maintained by `files/namespaces.yaml`.
 
@@ -84,9 +84,11 @@ liora-vm100 : ok=10 changed=0 unreachable=0 failed=0 skipped=2
 
 Its node report showed `group3-ubuntu01 Ready control-plane`, internal IP `10.10.10.20`, and k3s `v1.36.5+k3s1`. Ansible is not installed on the guest for this remote approach; the Ansible controller is WSL.
 
-**Gateway scope:** the current `jumpuser` public key should be permitted to forward **only** to the approved destination `10.10.10.20:22` (for example with `restrict,port-forwarding,permitopen="10.10.10.20:22"` in its `authorized_keys` entry). The gateway can serve a rebuilt VM at the same IP, but cannot automatically reach a different VM/IP. Keep the approved forwarding restrictions in place.
+**Gateway scope:** On 14 November, `jumpuser` allowed a connection to `10.10.10.21:22` but refused `10.10.10.20:22`. The `jumpuser` public key must be permitted to forward **only** to the approved replacement VM destination `10.10.10.20:22` (for example with `restrict,port-forwarding,permitopen="10.10.10.20:22"` in its `authorized_keys` entry). The gateway can serve a rebuilt VM at the same IP, but cannot automatically reach a different VM/IP. Keep the approved forwarding restrictions in place.
 
 **Troubleshooting `administratively prohibited`:** if `ssh liora-vm100` reports `channel 0: open failed: administratively prohibited: open failed`, the SSH gateway accepted the key but **refused the TCP forwarding request before reaching the guest**. First check the WSL SSH config: `liora-proxmox` must use `jumpuser`, while `liora-vm100` must use `group3`. An authorized administrator can then check `/home/jumpuser/.ssh/authorized_keys` for the correct key and exact `permitopen="10.10.10.20:22"` destination, along with the effective SSH server `AllowTcpForwarding` / `PermitOpen` restrictions. Do not weaken forwarding restrictions or modify shared-host settings without instructor approval. See [infrastructure SSH jump setup](../README.md#create-the-ssh-jump-account).
+
+**Before replacing VM 100:** follow the [VM 100 replacement runbook](../VM100_REBUILD.md) for backups, the old VM's removal, Terraform state and SSH gateway restrictions. **Do not confuse VM 101 at .21 with VM 100 at .20.**
 
 **After intentionally replacing VM 100:** ensure Cloud-Init creates `group3` with the WSL public key. A rebuilt guest will have a *new SSH host key*; verify its fingerprint through the trusted Proxmox console and then update the old guest entry in WSL `known_hosts` rather than blindly ignoring host-key warnings. Back up the existing VM and confirm its replacement is approved before any deletion.
 
