@@ -8,12 +8,11 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TF_DIR="$REPO_ROOT/infrastructure/terraform"
 ANSIBLE_DIR="$REPO_ROOT/infrastructure/ansible"
 
-# Non-secret defaults for the current bootcamp environment; override with
-# PROXMOX_HOST=... ./deploy.sh on other installations.
+# Example endpoint; override PROXMOX_HOST for other Proxmox installations.
 PROXMOX_HOST="${PROXMOX_HOST:-195.154.103.231}"
 JUMP_USER="${JUMP_USER:-jumpuser}"
-# This branch targets replacement VM 100. Override only for an explicitly
-# approved separate environment, never to skip reviewing a stale tfvars file.
+# Explicit target ID prevents accidentally applying a plan for a different VM.
+# Override EXPECTED_VM_ID only for a separately authorized VM.
 EXPECTED_VM_ID="${EXPECTED_VM_ID:-100}"
 export PROXMOX_VE_ENDPOINT="${PROXMOX_VE_ENDPOINT:-https://${PROXMOX_HOST}:8006/}"
 export SSL_CERT_FILE="${SSL_CERT_FILE:-$HOME/.config/proxmox/pve-root-ca.pem}"
@@ -58,8 +57,8 @@ terraform -chdir="$TF_DIR" init -input=false
 terraform -chdir="$TF_DIR" validate
 terraform -chdir="$TF_DIR" plan -out=vm.tfplan
 
-# Fail closed on ANY deletion/replacement (e.g. if old VM 101 remains in this
-# Terraform state). Also fail if create_vm=false yielded no target VM.
+# Reject deletion/replacement actions (including unexpected Terraform state
+# changes). Also require a configured target VM.
 # Do not log the plan JSON, as it may include sensitive provider values.
 if ! [[ "$EXPECTED_VM_ID" =~ ^[0-9]+$ ]]; then
     echo "ERROR: EXPECTED_VM_ID must be a numeric Proxmox VM ID." >&2
