@@ -11,21 +11,21 @@ variable "node_name" {
 }
 
 variable "vm_id" {
-  description = "Approved, currently unused VM ID; never use the existing VM 100."
+  description = "Approved unused VM ID; 100 only after existing manually created VM 100 has been removed."
   type        = number
-  default     = 0
+  default     = 100
 }
 
 variable "vm_name" {
   description = "New Ubuntu VM name."
   type        = string
-  default     = "job-market-ubuntu-101"
+  default     = "job-market-ubuntu-100"
 }
 
 variable "cpu_cores" {
   description = "Number of virtual CPU cores."
   type        = number
-  default     = 2
+  default     = 4
 
   validation {
     condition     = var.cpu_cores >= 1
@@ -42,7 +42,7 @@ variable "cpu_type" {
 variable "memory_mb" {
   description = "Dedicated VM memory in MiB."
   type        = number
-  default     = 4096
+  default     = 16384
 
   validation {
     condition     = var.memory_mb >= 512
@@ -53,7 +53,7 @@ variable "memory_mb" {
 variable "disk_gb" {
   description = "Boot disk size in GiB (minimum must fit the imported cloud image)."
   type        = number
-  default     = 16
+  default     = 30
 
   validation {
     condition     = var.disk_gb >= 8
@@ -74,9 +74,9 @@ variable "network_bridge" {
 }
 
 variable "vm_ipv4_cidr" {
-  description = "Approved unused static IPv4/CIDR, e.g. 10.10.10.21/24; verify before use."
+  description = "Approved unused static IPv4/CIDR, e.g. 10.10.10.20/24 after VM 100 has been removed."
   type        = string
-  default     = ""
+  default     = "10.10.10.20/24"
 }
 
 variable "vm_gateway" {
