@@ -35,9 +35,9 @@ Wait for the **publish** workflow to finish before deploying. GitHub may initial
 
 GitHub Actions does **not** deploy automatically to the private Proxmox VM.
 
-## 2. Prepare the Ubuntu VM
+## 2. Prepare the Proxmox VM
 
-Run these commands **inside VM 100**, reached through the existing SSH jump host:
+Run these commands **on the Proxmox VM**, reached through the restricted SSH jump account on the Proxmox host:
 
 ```bash
 sudo k3s kubectl get nodes
@@ -51,7 +51,7 @@ cd german-job-market-analytics
 
 If this repository is already cloned on the VM, switch to `kubernetes-deployment` and pull instead.
 
-Elasticsearch on Linux may require the following kernel setting **on the Ubuntu VM, not the Proxmox host**:
+Elasticsearch on Linux may require the following kernel setting **on the Proxmox VM, not the Proxmox host**:
 
 ```bash
 sudo sysctl -w vm.max_map_count=262144
@@ -89,9 +89,9 @@ sudo k3s kubectl -n dev logs deployment/airflow
 sudo k3s kubectl -n dev get events --sort-by=.lastTimestamp
 ```
 
-## 4. Access from local WSL (one background SSH tunnel)
+## 4. Access from the local machine (one background SSH tunnel)
 
-The cluster runs on a private VM. Use the root-level **`kubernetes_start.sh`** utility from your **local WSL shell** (e.g. `root@Seryoga-MC`), **not inside the Ubuntu VM**. It uses your existing `liora-vm100` SSH alias and the restricted Proxmox jump host.
+The cluster runs on a Proxmox VM with a private IP address. Run the root-level **`kubernetes_start.sh`** utility from the **local machine**, using a Bash-compatible shell—not from the Proxmox VM or the Proxmox host. Configure the `k3s-vm` SSH alias as shown in [the infrastructure SSH instructions](../infrastructure/README.md#4-optional-ssh-alias-for-interactive-vm-access), so SSH reaches the Proxmox VM through the Proxmox host's restricted jump account. The local machine needs OpenSSH, Python 3, and curl.
 
 ```bash
 cd ~/german-job-market-analytics
@@ -102,7 +102,7 @@ git pull
 ./kubernetes_start.sh dev
 ```
 
-The script discovers the Kubernetes Service ClusterIPs through SSH, establishes **one detached SSH tunnel** with several localhost-only port forwards, verifies the Nginx endpoint, and prints URLs and the current Grafana, Airflow and PostgreSQL credentials. The script **does not deploy, restart, or expose any pods publicly**; the cluster must already have been deployed by `kubernetes/deploy.sh` on the VM.
+The script discovers the Kubernetes Service ClusterIPs through SSH, establishes **one detached SSH tunnel** with several localhost-only port forwards, verifies the Nginx endpoint, and prints URLs and the current Grafana, Airflow and PostgreSQL credentials. The script **does not deploy, restart, or expose any pods publicly**; the cluster must already have been deployed by `kubernetes/deploy.sh` on the Proxmox VM.
 
 | Service | Local URL for dev |
 |---|---|
@@ -119,7 +119,7 @@ The script retrieves credentials from the running cluster via `sudo -n k3s kubec
 
 **Keep the terminal output private:** the generated passwords appear on screen but are not written to a local file. Do not paste or capture that output in logs. The script never prints the database URL containing the password.
 
-Tunnel management from WSL:
+Tunnel management from the local machine:
 
 ```bash
 ./kubernetes_start.sh dev          # Start, or reuse an existing tunnel, and show URLs/passwords
@@ -127,26 +127,26 @@ Tunnel management from WSL:
 ./kubernetes_stop.sh dev           # Stop just this tunnel
 ```
 
-The background SSH process remains alive when the starting terminal closes, **as long as the local WSL instance continues running**. After restarting WSL or rebooting, run the start command again. If you previously opened `ssh -N -L ...` manually using the same WSL ports, stop it with Ctrl+C first. You can also stop old `kubectl port-forward` commands on the VM; the new script does not use them.
+The background SSH process remains alive when the starting terminal closes, **as long as the local SSH environment remains running**. After restarting the local machine or its shell environment, run the start command again. If you previously opened `ssh -N -L ...` manually using the same local ports, stop it with Ctrl+C first. You can also stop old `kubectl port-forward` commands on the Proxmox VM; the new script does not use them.
 
-This approach forwards directly from the Ubuntu VM to its Kubernetes ClusterIP Services, avoiding long-running `kubectl port-forward` terminals. It depends on Service IPs being reachable from the k3s node, which is supported by this cluster's networking setup. If networking changes, stop and restart the tunnel to discover the current Service IPs. All locally exposed ports are explicitly bound to `127.0.0.1`.
+This approach forwards through the Proxmox VM directly to its Kubernetes ClusterIP Services, avoiding long-running `kubectl port-forward` terminals. It depends on Service IPs being reachable from the k3s node, which is supported by this cluster's networking setup. If networking changes, stop and restart the tunnel to discover the current Service IPs. All locally exposed ports are explicitly bound to `127.0.0.1`.
 
-You can override the SSH destination (default `liora-vm100`) using `JOB_MARKET_VM_SSH_HOST=your-ssh-alias ./kubernetes_start.sh dev`.
+You can override the SSH destination (default `k3s-vm`) using `JOB_MARKET_VM_SSH_HOST=your-ssh-alias ./kubernetes_start.sh dev`.
 
 The `prod` overlay, if deployed, can be accessed separately using `./kubernetes_start.sh prod`; it uses different local ports to avoid collisions. Do not deploy both full environments on this VM unless its capacity permits it.
 
 ### Manual fallback
 
-If the single SSH tunnel cannot reach the ClusterIP Services, the older two-hop method remains available. On the **VM**:
+If the single SSH tunnel cannot reach the ClusterIP Services, the older two-hop method remains available. On the **Proxmox VM**:
 
 ```bash
 sudo k3s kubectl -n dev port-forward svc/nginx 8088:80
 ```
 
-Then from a separate **local WSL** terminal:
+Then from a separate terminal on the **local machine**:
 
 ```bash
-ssh -N -L 8088:127.0.0.1:8088 liora-vm100
+ssh -N -L 8088:127.0.0.1:8088 k3s-vm
 ```
 
 The manual forwarding processes must remain running. This fallback is separate from `kubernetes_start.sh`.

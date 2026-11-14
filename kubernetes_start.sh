@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Local WSL/Linux access to a private k3s VM; does NOT deploy or restart pods.
+# Local-machine access to a private k3s VM; does NOT deploy or restart pods.
 set -euo pipefail
 umask 077
 
 environment="${1:-dev}"
 action="${2:-start}"
-vm="${JOB_MARKET_VM_SSH_HOST:-liora-vm100}"
+vm="${JOB_MARKET_VM_SSH_HOST:-k3s-vm}"
 
 if [[ "$environment" != "dev" && "$environment" != "prod" ]]; then
     echo "Usage: ./kubernetes_start.sh [dev|prod] [start|stop|status]" >&2
@@ -49,7 +49,7 @@ fi
 
 for required in python3 base64 curl; do
     command -v "$required" >/dev/null ||
-        { echo "$required is required on local WSL/Linux." >&2; exit 1; }
+        { echo "$required is required on the local machine." >&2; exit 1; }
 done
 
 # Non-overlapping local ports let both environments be accessed if the VM has capacity.
@@ -71,7 +71,7 @@ else
     # port-forward processes or extra VM terminal sessions are needed.
     if ! service_json="$(ssh "${ssh_args[@]}" "$vm" \
         "sudo -n k3s kubectl -n $environment get services ${services[*]} -o json")"; then
-        echo "Cannot query services. Run this from local WSL (where the '$vm' SSH alias works)." >&2
+        echo "Cannot query services. Run this from the local machine (where the '$vm' SSH alias works)." >&2
         echo "The VM must be reachable and permit passwordless sudo k3s kubectl." >&2
         exit 1
     fi
@@ -108,7 +108,7 @@ print("\n".join(by_name[name] for name in names))
     if ! ssh "${ssh_args[@]}" -o ExitOnForwardFailure=yes \
         -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
         -M -S "$socket" -fNT "${forwards[@]}" "$vm"; then
-        echo "Cannot start SSH forwarding. Stop any previous WSL tunnels using these ports." >&2
+        echo "Cannot start SSH forwarding. Stop any previous local SSH tunnels using these ports." >&2
         exit 1
     fi
 fi

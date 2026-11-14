@@ -6,13 +6,13 @@ This guide explains how to provision an Ubuntu virtual machine on Proxmox VE usi
 
 ![Infrastructure deployment architecture](../docs/images/infrastructure.png)
 
-Run Terraform and Ansible from a local Linux machine with this repository checked out. The Proxmox host acts as an SSH jump server, and the Ubuntu VM is the Ansible target.
+Run Terraform and Ansible from the **local machine**, using a Linux-compatible command-line environment with this repository checked out. The Proxmox host acts as an SSH jump server, and the Ubuntu VM is the Ansible target.
 
 ## Deployment overview
 
 - **One-time Proxmox preparation:** download the Ubuntu Cloud Image, verify the NAT VNet, create the API token, and grant it the shared storage and VNet permissions (Section 2). These actions require authorized Proxmox administration.
 - **Before creating or recreating a VM:** verify and, if necessary, grant that specific VM ID's `/vms/VM_ID` ACL. On this host, destroying a VM has removed its VM-specific ACL; the shared storage/VNet permissions remain (Section 2).
-- **VM + k3s deployment:** from local Ubuntu/Linux (including WSL), configure `infrastructure/terraform/terraform.tfvars`, trust the Proxmox CA and run `./deploy.sh` (Section 3). The script plans/applies Terraform **only after confirmation**, waits for SSH and Cloud-Init, then invokes Ansible to install/configure k3s and verify the node. The restricted `jumpuser` SSH account must already be configured on Proxmox (Section 2).
+- **VM + k3s deployment:** from the local machine, configure `infrastructure/terraform/terraform.tfvars`, trust the Proxmox CA and run `./deploy.sh` (Section 3). The script plans/applies Terraform **only after confirmation**, waits for SSH and Cloud-Init, then invokes Ansible to install/configure k3s and verify the node. The restricted `jumpuser` SSH account must already be configured on Proxmox (Section 2).
 - **After deployment:** use the optional SSH alias for interactive access (Section 4), or rerun the Ansible playbook manually for troubleshooting (Section 5). **The application itself is not deployed by `deploy.sh`.**
 
 This guide assumes a Proxmox host is already available; it does not install Proxmox itself. Follow the prerequisites and procedures below before deploying. Never assume the example VM ID, private IP, subnet, VNet or permissions are available on another host. Keep the Terraform state for repeat runs.
