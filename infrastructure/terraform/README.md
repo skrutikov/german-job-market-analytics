@@ -2,17 +2,17 @@
 
 This directory contains Infrastructure as Code for the Job Market Analytics project.
 It now describes **a real Ubuntu 24.04 cloud-image VM**, not a template clone.
-**The checked-in example is disabled by default:** `create_vm = false`. This Terraform configuration does **not** currently manage the working VM 100.
+**Current target (14 November 2026):** a **NEW Terraform-managed VM 100** at **10.10.10.20/24** with **4 vCPUs, 16,384 MiB RAM and a 30 GiB disk**. The example remains disabled by default (`create_vm = false`). The existing manually created VM 100 is **not managed by Terraform** and must be backed up and removed with authorization before reusing its ID. See [VM 100 rebuild runbook](../VM100_REBUILD.md).
 
-**Verified (November 2026):** Terraform created temporary VM 101 from the pre-staged Ubuntu Cloud Image (Ubuntu 24.04.5 booted successfully); **VM 101 was subsequently destroyed**. Its Cloud-Init guest networking/SSH authentication and fresh Ansible installation were not verified. The manually provisioned VM 100 continues to run k3s. **Remote Ansible from WSL to VM 100 through an instructor-approved Proxmox SSH gateway is now verified**, with `changed=0` and `failed=0`. See [Ansible README](../ansible/README.md).
+**Historical test (November 2026):** Terraform created a temporary VM 101 from the staged Ubuntu Cloud Image (Ubuntu 24.04.5 booted successfully); that particular test instance was later destroyed. **A VM 101 is visible again in the 14 November Proxmox screenshot**; its present state/ownership must be checked separately. Its Cloud-Init guest networking/SSH authentication and fresh Ansible installation were not verified. The manually provisioned VM 100 continues to run k3s. **Remote Ansible from WSL to VM 100 through an instructor-approved Proxmox SSH gateway is now verified**, with `changed=0` and `failed=0`. See [Ansible README](../ansible/README.md).
 
-**Before any further `terraform apply`:** check `terraform state list` and `terraform plan`, then review whether the local, Git-ignored `terraform.tfvars` still has `create_vm = true`. An enabled configuration can **recreate the deleted test VM**; a disabled configuration can **plan destruction** of any currently state-managed VM. Never rely on the checked-in example as a description of the live state.
+**Before any further `terraform apply`:** check `terraform state list` and `terraform plan`, then review whether the local, Git-ignored `terraform.tfvars` still has `create_vm = true`. An enabled configuration with a stale local `terraform.tfvars` can **target VM 101**; a disabled configuration can **plan destruction** of a state-managed VM. The current `deploy.sh` blocks delete/replace plans and expects VM **100** by default. Never rely on the checked-in example as a description of the live state.
 
 ## What this configuration creates
 
 When explicitly enabled, Terraform provisions a **separate Ubuntu VM** from an Ubuntu 24.04 (Noble) cloud image:
 
-- A new VM ID and name (example: `101`, `job-market-ubuntu-101`).
+- A new VM ID and name (current target: `100`, `job-market-ubuntu-100` **only after the original VM 100 is removed**).
 - Configurable virtual CPU model/core count, dedicated RAM, and a QCOW2 `scsi0` disk.
 - The approved `local` datastore for disk and Cloud-Init data.
 - A VirtIO NIC on `nat0`, with firewall enabled.
@@ -20,13 +20,13 @@ When explicitly enabled, Terraform provisions a **separate Ubuntu VM** from an U
 - Starts the VM to run Cloud-Init; automatic start on a future Proxmox host boot remains disabled.
 - Optional official Ubuntu image download through the Proxmox API, **only when explicitly enabled**.
 
-**What it does not yet do:** install k3s inside the new guest, automatically invoke the Ansible playbook, deploy the application, or provision an SSH gateway. The **separately configured SSH gateway now allows remote Ansible to VM 100**, but it is not Terraform-managed. This repository does **not yet** offer a tested single-command end-to-end rebuild.
+**Terraform by itself** does not install k3s in the guest, invoke Ansible, deploy the app, or provision an SSH gateway. The repository's root `deploy.sh` runs Ansible after Terraform, but the complete fresh-VM chain is **not yet tested**. The **separately configured SSH gateway now allows remote Ansible to VM 100**, but it is not Terraform-managed. This repository does **not yet** offer a tested single-command end-to-end rebuild.
 
-The example temporary VM uses **2 vCPUs, 4096 MiB RAM and a 16 GiB virtual disk**. The production-sized existing VM 100 is left untouched. These values are adjustable in `terraform.tfvars`.
+The **current tracked example** uses **4 vCPUs, 16,384 MiB RAM and a 30 GiB disk**, for the new replacement VM 100. Earlier VM 101 tests used 2 vCPUs, 4096 MiB RAM and a 16 GiB disk. The Git-ignored local `terraform.tfvars` must be updated separately before deploying.
 
 ## Proxmox-side setup actually performed (Web UI and host shell)
 
-The procedures below document the **successful November 2026 provisioning of Ubuntu VM 101**. The Proxmox host is shared: keep all changes scoped to the instructor-authorized VM, datastore and network.
+The sections below retain **historical evidence** of the November 2026 VM 101 test, not current values to apply. Follow the [VM 100 rebuild runbook](../VM100_REBUILD.md) for the new target. The Proxmox host is shared: keep all changes scoped to the instructor-authorized VM, datastore and network.
 
 ### Inspect the available resources (Proxmox HOST shell)
 
@@ -129,8 +129,8 @@ These commands run on **local Ubuntu WSL** (`root@Seryoga-MC`), NOT on the Proxm
 ~~~bash
 cd ~/german-job-market-analytics
 git fetch origin
-git switch docs/infrastructure-readme-update
-git pull --ff-only
+git switch proxmox-deployment
+git pull --ff-only origin proxmox-deployment
 cd infrastructure/terraform
 terraform init
 terraform fmt -check
@@ -210,7 +210,7 @@ download_cloud_image = false
 cloud_image_file_id  = "local:import/job-market-noble-server-cloudimg-amd64.qcow2"
 ~~~
 
-**Before provisioning:** verify that the VM ID and IP address are available **and assigned to our group**, and that Liora permits the planned compute/storage allocation. Do not reuse historical VM 101 settings without verifying ownership. An unanswered ping is not proof that an IP is available.
+**Before provisioning:** verify that the **old manual VM 100 has been backed up and removed**, its ID/IP are free **and assigned to our group**, and that Liora permits the 4 vCPU/16 GiB/30 GiB allocation. Do not reuse historical VM 101 settings without verifying ownership. An unanswered ping is not proof that an IP is available.
 
 **Critical Terraform state rule:** `terraform.tfvars.example` sets `create_vm = false` to prevent accidental first-time provisioning. If a **live VM is managed by this Terraform state**, keep `create_vm = true` in the local `terraform.tfvars` until you intentionally destroy it; changing to `false` and applying can propose destruction. Conversely, after destroying VM 101, leaving `create_vm = true` can propose recreating it. Always inspect `terraform state list` and `terraform plan` before applying.
 
@@ -267,15 +267,15 @@ The historical verified SSH route on 11 November was **WSL → Proxmox `group3ju
 
 **Verified on 11 November 2026:** from WSL, `ansible-playbook -i inventory.ini install-k3s.yml --ask-become-pass` completed on VM 100 with `ok=10 changed=0 unreachable=0 failed=0 skipped=2`. Its installed k3s node was `Ready`. The SSH aliases, inventory and full instructions are in the [Ansible README](../ansible/README.md).
 
-The SSH gateway is **configured outside Terraform**, and authorization may restrict port forwarding to `10.10.10.20:22`. **As of 14 November 2026**, authentication as `jumpuser` works, but forwarding to VM 100 was refused with `channel 0: open failed: administratively prohibited`. Thus the historical success via `group3jump` does **not** establish that the current `jumpuser` forwarding is working. Check the gateway key's exact `permitopen` destination and the effective SSH forwarding restrictions, without widening access to other groups' VMs. Recreating **VM 100 at the same private IP** can retain that forwarding destination, but the new guest must authorize our WSL public key via Cloud-Init and will have a new SSH host key.
+The SSH gateway is **configured outside Terraform**, and authorization may restrict port forwarding to `10.10.10.20:22`. **As of 14 November 2026**, authentication as `jumpuser` works; forwarding to **10.10.10.21:22** works, but forwarding to the intended **10.10.10.20:22** was refused with `administratively prohibited`. Thus the historical success via `group3jump` does **not** establish that the current `jumpuser` forwarding is working. Check the gateway key's exact `permitopen` destination and the effective SSH forwarding restrictions, without widening access to other groups' VMs. Recreating **VM 100 at the same private IP** can retain that forwarding destination, but the new guest must authorize our WSL public key via Cloud-Init and will have a new SSH host key.
 
-## Planned rebuild of the existing VM 100 (not yet performed)
+## Rebuild of the existing VM 100 (configured, not yet performed)
 
-The long-term goal is to let **Terraform provision VM 100** and then **Ansible install k3s from scratch**, replacing the current manually provisioned VM and avoiding use of VM 101 (which may be allocated to another group). This is a planned migration, **not a currently safe apply**:
+Terraform defaults and example variables now target **VM 100 / 10.10.10.20/24 / 4 vCPUs / 16 GiB RAM / 30 GiB disk**. The goal is to provision a **new** VM 100, then install k3s with Ansible. The old manual VM still exists; this is a destructive replacement and **not a safe immediate apply**. See [the dedicated runbook](../VM100_REBUILD.md):
 
 1. Back up or export all data/configuration that must survive from existing VM 100, including any Kubernetes workloads, secrets, volumes and cluster access needed later.
 2. Confirm with the instructor the assigned VM ID `100`, IP `10.10.10.20/24`, permitted CPU/RAM/storage and the maintenance window. **Never attempt to create a second VM with the same ID or IP while the old one exists.**
-3. After the existing VM has been intentionally removed, update the local `terraform.tfvars` to the assigned VM 100 identity, capacity and Cloud-Init user/key, and arrange the **API-token ACL on `/vms/100`**. The old `/vms/101` privilege does not automatically cover it; a VM-specific ACL can disappear when its VM is removed.
+3. After the existing VM has been intentionally removed, update your **Git-ignored local** `terraform.tfvars` to the tracked example's VM 100 values (Git pull does not change that file), and arrange the **API-token ACL on `/vms/100`**. The old `/vms/101` privilege does not automatically cover it; a VM-specific ACL can disappear when its VM is removed.
 4. Confirm Terraform state does not still track another live VM. Generate and review a fresh plan, then apply only the intended VM creation.
 5. After Cloud-Init, verify VM 100 has `10.10.10.20` and accepts our WSL SSH key. Verify its **new guest SSH host fingerprint** via a trusted console before adjusting the WSL `known_hosts` entry.
 6. Run `../ansible/install-k3s.yml` from WSL through the existing gateway, verify `Ready` and the `dev`/`prod` namespaces, then repeat to check idempotency.
@@ -284,19 +284,19 @@ The long-term goal is to let **Terraform provision VM 100** and then **Ansible i
 
 ## Cleanup and safety
 
-**Historical note:** temporary VM 101 was already destroyed after the successful provisioning test. Before any future cleanup, use `terraform state list` to determine what this repository's current state actually manages. For any **future live Terraform-managed VM**, destroy it **only when you intentionally want to remove it**, and review the full plan first (from WSL with credentials and `SSL_CERT_FILE` available):
+**Historical note:** the earlier test instance of VM 101 was destroyed after provisioning, although a VM 101 was visible again in the 14 November screenshot. Verify current ownership/state before acting. Before any future cleanup, use `terraform state list` to determine what this repository's current state actually manages. For any **future live Terraform-managed VM**, destroy it **only when you intentionally want to remove it**, and review the full plan first (from WSL with credentials and `SSL_CERT_FILE` available):
 
 ~~~bash
 cd ~/german-job-market-analytics/infrastructure/terraform
 terraform state list
-terraform plan -destroy
-# After confirming the planned deletions affect only this Terraform-managed test VM:
-terraform destroy
+terraform plan -destroy        # Inspection only, not a command to approve blindly
 ~~~
+
+For any **future Terraform-managed VM 100**, run the guarded `./destroy.sh` from the repository root only with verified backups, authorization, `ALLOW_DESTROY_VM100=true`, and the typed `destroy 100` confirmation. This script cannot remove the old manual VM, which is not in Terraform state.
 
 If using the pre-staged image (`download_cloud_image = false`), the original Cloud Image on `local` is **not** Terraform-managed and remains available for a rebuild. Verify removals with `qm list` on the Proxmox host. Do not delete `terraform.tfstate` until teardown has succeeded; when a VM is intentionally destroyed, its VM-specific token ACL may also be removed, so restoring the ACL for the **next approved VM ID** (or arranging a dedicated permitted pool) may be necessary before recreating it.
 
-- VM 100 is **not imported or managed today**. Its current ID/IP must **not be targeted while the manually provisioned VM exists**. Reuse them only as part of the approved, backed-up replacement procedure above; review and adapt the historical example variables and descriptions before doing so.
+- VM 100 is **not imported or managed today**. Its current ID/IP must **not be targeted while the manually provisioned VM exists**. The tracked example now uses the intended replacement values, but your **Git-ignored local `terraform.tfvars`** may still contain the older VM 101 values.
 - Use a **separate state** from `~/terraform-smoke-test`. Never mix two independently managed resources targeting the same VM ID.
 - Review `terraform plan -destroy` before `terraform destroy`: only resources managed by this new configuration (including its optional downloaded image) should be removed. Keep the matching `terraform.tfstate` until cleanup is verified.
 - Keep Proxmox host network, storage and firewall changes within the instructor-approved scope. Do not affect other groups' VMs, and do not alter or destroy existing VM 100 outside the planned replacement.
