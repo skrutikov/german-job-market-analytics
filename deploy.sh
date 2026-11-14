@@ -12,6 +12,9 @@ ANSIBLE_DIR="$REPO_ROOT/infrastructure/ansible"
 # PROXMOX_HOST=... ./deploy.sh on other installations.
 PROXMOX_HOST="${PROXMOX_HOST:-195.154.103.231}"
 JUMP_USER="${JUMP_USER:-jumpuser}"
+# This branch targets replacement VM 100. Override only for an explicitly
+# approved separate environment, never to skip reviewing a stale tfvars file.
+EXPECTED_VM_ID="${EXPECTED_VM_ID:-100}"
 export PROXMOX_VE_ENDPOINT="${PROXMOX_VE_ENDPOINT:-https://${PROXMOX_HOST}:8006/}"
 export SSL_CERT_FILE="${SSL_CERT_FILE:-$HOME/.config/proxmox/pve-root-ca.pem}"
 
@@ -58,8 +61,12 @@ terraform -chdir="$TF_DIR" plan -out=vm.tfplan
 # Fail closed on ANY deletion/replacement (e.g. if old VM 101 remains in this
 # Terraform state). Also fail if create_vm=false yielded no target VM.
 # Do not log the plan JSON, as it may include sensitive provider values.
-if ! TARGET_VM_ID="$(terraform -chdir="$TF_DIR" show -json vm.tfplan | python3 -c '
-import json, sys
+if ! [[ "$EXPECTED_VM_ID" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: EXPECTED_VM_ID must be a numeric Proxmox VM ID." >&2
+    exit 1
+fi
+if ! TARGET_VM_ID="$(terraform -chdir="$TF_DIR" show -json vm.tfplan | EXPECTED_VM_ID="$EXPECTED_VM_ID" python3 -c '
+import json, os, sys
 plan = json.load(sys.stdin)
 changes = plan.get("resource_changes", [])
 danger = [c["address"] for c in changes if "delete" in c.get("change", {}).get("actions", [])]
@@ -71,6 +78,8 @@ if len(targets) != 1:
 vm_id = targets[0].get("change", {}).get("after", {}).get("vm_id")
 if not isinstance(vm_id, int) or vm_id < 100:
     sys.exit("Unexpected VM ID in Terraform plan.")
+if vm_id != int(os.environ["EXPECTED_VM_ID"]):
+    sys.exit("Plan targets VM %s, but expected VM %s. Update the local, Git-ignored terraform.tfvars." % (vm_id, os.environ["EXPECTED_VM_ID"]))
 print(vm_id)
 ')"; then
     echo "ERROR: Unsafe or incomplete Terraform plan; nothing was applied." >&2
