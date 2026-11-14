@@ -1,28 +1,30 @@
 # Copy this file to terraform.tfvars (Git-ignored), then review and update the values.
 # Do NOT commit real credentials, Terraform state or plan files.
-# This example targets a NEW VM 101 on the Group 3 bootcamp Proxmox host.
-# VM 100 already exists and is explicitly excluded by main.tf.
-# Verify that the chosen VM ID, IP address and resources are available and approved.
+# This example is for a NEW Terraform-managed VM 100, replacing the old manually
+# created VM 100 ONLY AFTER its data has been backed up and that VM has been
+# removed with explicit authorization. Shutting down VM 100 is NOT sufficient.
+# Never apply Terraform while the old VM 100 exists; verify state/plan first.
+# Historical VM 101 experiments are separate and must not be overwritten.
 
 # Safety switch: set to true only when you are ready to provision a NEW VM.
 # IMPORTANT: changing it back to false after creation would plan VM destruction.
 create_vm           = false
 node_name           = "B2C-DevOps-Inter-Bootcamp-SEP26-group-5" # Exact Proxmox node name
-vm_id               = 101                                     # Free VM ID (do NOT use existing VM 100)
-vm_name             = "job-market-ubuntu-101"                  # Descriptive name of the new VM
+vm_id               = 100                                     # Use ONLY after the old VM 100 is removed
+vm_name             = "job-market-ubuntu-100"                  # Replacement VM name
 
 # Choose the VM resources within your allocated quota.
-cpu_cores           = 2                # Virtual CPU cores
+cpu_cores           = 4                # Virtual CPU cores
 cpu_type            = "x86-64-v2-AES"  # CPU model supported by the host
-memory_mb           = 4096             # RAM in MiB (4096 = 4 GiB)
-disk_gb             = 16               # Boot disk size in GiB
+memory_mb           = 16384            # RAM in MiB (16 GiB)
+disk_gb             = 30               # Boot disk size in GiB
 datastore_id        = "local"          # Proxmox storage ID (Datacenter -> Storage)
 
 # Check Datacenter -> SDN -> VNets -> your VNet -> Subnets in Proxmox.
 # The VNet and gateway must already exist; choose an approved, unused VM IP
 # within that subnet. vm_ipv4_cidr is the VM's address, NOT the subnet address.
 network_bridge      = "nat0"                 # VNet ID (not the SDN zone name)
-vm_ipv4_cidr        = "10.10.10.21/24"       # VM IPv4 address with CIDR prefix
+vm_ipv4_cidr        = "10.10.10.20/24"       # VM IPv4 address with CIDR prefix
 vm_gateway          = "10.10.10.1"          # Gateway of this particular subnet
 dns_servers         = ["1.1.1.1", "8.8.8.8"] # Public DNS: Cloudflare and Google
 
