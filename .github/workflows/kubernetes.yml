@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, kubernetes-deployment]
+    branches: [main, gitops]
   workflow_dispatch:
 
 permissions:
@@ -16,13 +16,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check Kubernetes access script syntax
-        run: bash -n kubernetes_start.sh kubernetes_stop.sh
+        run: bash -n kubernetes_start.sh kubernetes_stop.sh argocd/bootstrap.sh
       - uses: azure/setup-kubectl@v4
         with:
           version: v1.33.0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Validate Argo CD Application
+        run: |
+          python - <<'PY'
+          import yaml
+          with open("argocd/application-dev.yaml", encoding="utf-8") as stream:
+              app = yaml.safe_load(stream)
+          assert app["kind"] == "Application"
+          assert app["metadata"]["namespace"] == "argocd"
+          assert app["spec"]["source"]["path"] == "kubernetes/overlays/dev"
+          assert app["spec"]["source"]["targetRevision"] == "main"
+          assert app["spec"]["destination"]["namespace"] == "dev"
+          assert app["spec"]["syncPolicy"]["automated"]["prune"] is False
+          PY
       - name: Validate rendered Kustomize overlays
         run: |
           python -m pip install PyYAML==6.0.2
