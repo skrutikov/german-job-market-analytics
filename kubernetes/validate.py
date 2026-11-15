@@ -40,6 +40,12 @@ def validate(path: Path, namespace: str) -> None:
     assert EXPECTED_WORKLOADS <= names("Deployment")
     assert EXPECTED_SERVICES <= names("Service")
     assert EXPECTED_PVCS <= names("PersistentVolumeClaim")
+    for pvc in EXPECTED_PVCS:
+        annotations = objects["PersistentVolumeClaim", pvc]["metadata"]["annotations"]
+        assert (
+            annotations["argocd.argoproj.io/sync-options"]
+            == "Prune=confirm,Delete=false"
+        ), pvc
     assert "data-update" in names("CronJob")
     assert "job-market" in names("Ingress")
 

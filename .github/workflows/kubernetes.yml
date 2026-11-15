@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, performance-monitoring]
+    branches: [main, gitops-pruning]
   workflow_dispatch:
 
 permissions:
@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check shell and k6 JavaScript syntax
         run: |
-          bash -n kubernetes_start.sh kubernetes_stop.sh argocd/bootstrap.sh
+          bash -n kubernetes_start.sh kubernetes_stop.sh argocd/bootstrap.sh argocd/configure-sync.sh
           node --input-type=module --check < performance/k6/job-search.js
       - uses: azure/setup-kubectl@v4
         with:
@@ -38,7 +38,9 @@ jobs:
           assert app["spec"]["source"]["path"] == "kubernetes/overlays/dev"
           assert app["spec"]["source"]["targetRevision"] == "main"
           assert app["spec"]["destination"]["namespace"] == "dev"
-          assert app["spec"]["syncPolicy"]["automated"]["prune"] is False
+          assert app["spec"]["syncPolicy"]["automated"]["prune"] is True
+          assert app["spec"]["syncPolicy"]["automated"]["allowEmpty"] is False
+          assert "PruneLast=true" in app["spec"]["syncPolicy"]["syncOptions"]
           PY
       - name: Validate Grafana performance dashboard
         run: |
