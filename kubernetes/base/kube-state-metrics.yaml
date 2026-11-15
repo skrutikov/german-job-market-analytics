@@ -54,10 +54,18 @@ spec:
           ports:
             - name: http-metrics
               containerPort: 8080
+            - name: telemetry
+              containerPort: 8081
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http-metrics
+            initialDelaySeconds: 5
+            periodSeconds: 20
           readinessProbe:
             httpGet:
               path: /readyz
-              port: 8080
+              port: telemetry
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
