@@ -4,27 +4,56 @@ Argo CD reconciles the existing `dev` Kubernetes application from `kubernetes/ov
 
 ## Bootstrap on the Proxmox VM
 
-First deploy and verify the application using [the Kubernetes guide](../kubernetes/README.md). Connect to the **Proxmox VM** through the SSH jump account on the **Proxmox host**. Then, on the VM:
+First deploy and verify the application using [the Kubernetes guide](../kubernetes/README.md). Connect to the **Proxmox VM** through the SSH jump account on the **Proxmox host**. On the VM:
 
 ```bash
 cd ~/german-job-market-analytics
-git fetch origin
-git switch gitops
+git switch main
 git pull
-sudo bash argocd/bootstrap.sh gitops
+sudo ./argocd/bootstrap.sh main
 ```
 
-This installs Argo CD in the `argocd` namespace, waits for the server, repository server and application controller to be ready, and creates the `job-market-dev` Application tracking the `gitops` branch. The script is repeatable; it uses the pinned upstream installation manifest and requires cluster-admin privileges, GitHub access and sufficient VM resources. It does **not** run the `prod` overlay, recreate the `dev` stack or regenerate application passwords.
+This installs Argo CD into the `argocd` namespace, waits for its components to be ready, and registers the existing `job-market-dev` Application. It requires cluster-admin privileges, access to GitHub and sufficient VM resources. It does **not** create `prod`, reinstall the `dev` application or regenerate its passwords.
 
-The Application automatically synchronizes and self-heals tracked resources, but **automatic pruning is disabled**. Removing a manifest from Git does not automatically delete a Kubernetes resource. Existing PostgreSQL, Elasticsearch, Grafana and Airflow PVCs remain in place. The `job-market-secrets` Secret is created outside GitOps and is not committed to this repository. Back up stateful data before experimenting.
+### Automatic pruning with persistent-storage protection
+
+The Application automatically synchronizes Git changes and self-heals drift. It also **prunes obsolete resources**, so replaced Kustomize ConfigMaps are cleaned up without manual Kubernetes commands. Pruning happens after the other resources have been deployed and become healthy (`PruneLast=true`). `allowEmpty: false` prevents an accidentally empty Git source from causing wholesale automatic deletion. [Argo CD automatic sync documentation](https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/)
+
+Six persistent volume claims—PostgreSQL, Elasticsearch, ETL data, Airflow state, Prometheus and Grafana—carry this resource annotation:
+
+```yaml
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=confirm,Delete=false
+```
+
+- `Prune=confirm`: removing a PVC from Git requires explicit approval in Argo CD before that PVC is pruned
+- `Delete=false`: deleting the Argo CD Application itself does **not** remove these PVCs
+
+An unapproved, intentionally removed PVC may leave the Application OutOfSync until pruning is approved. Neither annotation protects against direct manual `kubectl delete pvc` by a privileged operator. **Keep backups**: local-path volumes and their application data are not replicated.
+
+### Existing installation: one-time configuration update
+
+If Argo CD is **already installed** (as in our deployment), you do not need to reinstall it. Once the protected manifests have been merged to `main`, update the checkout **on the Proxmox VM** and run:
+
+```bash
+cd ~/german-job-market-analytics
+git switch main
+git pull
+sudo ./argocd/configure-sync.sh main
+```
+
+This single configuration command checks that all six PVCs exist, adds the protection annotation to each live PVC (metadata only), verifies it, and **only then** enables automatic pruning and reconciliation from `main`. It is idempotent. It does not touch the database contents or restart the workloads.
+
+The `job-market-secrets` Secret is managed outside GitOps and is not stored in this repository.
 
 ## Access from the local machine
 
-After installation, update the repository on the **local machine** to this feature branch, then restart the existing SSH tunnel so it discovers the new `argocd-server` Service:
+After installation, update the repository on the **local machine**, then restart the existing SSH tunnel so it discovers the new `argocd-server` Service:
 
 ```bash
 git fetch origin
-git switch gitops
+git switch main
 git pull
 ./kubernetes_stop.sh dev
 ./kubernetes_start.sh dev
@@ -52,27 +81,25 @@ sudo k3s kubectl -n dev get pods
 
 In the Argo CD web UI, inspect the `job-market-dev` resource tree and its **Sync** and **Health** status. Argo CD adopts the existing Kubernetes resources; its first sync may update resource metadata or trigger rollout. No separate deployment is created.
 
-To test reconciliation, commit a small, safe, non-secret change under `kubernetes/overlays/dev` on the `gitops` branch. Argo CD periodically detects and applies the desired manifests. Do not manually run `kubectl apply -k` on those resources once Argo CD is managing them.
+To test reconciliation, commit a small, safe, non-secret change under `kubernetes/overlays/dev` on the branch that the Application tracks. Argo CD periodically detects and applies the desired manifests. Do not manually run `kubectl apply -k` on those resources once Argo CD is managing them.
 
-**Container images are a separate step.** GitHub Actions publishes `:dev` images for the `gitops` branch, but Argo CD does not detect when a mutable image tag is simply republished. For a new image release, update an overlay's `newTag` to the already-published immutable `sha-<commit>` tag and push that manifest change. We can automate that image-tag update later.
+**Container images are a separate step.** GitHub Actions publishes `:main` images for the `main` branch, but Argo CD does not detect when a mutable image tag is simply republished. For a new image release, update an overlay's `newTag` to the already-published immutable `sha-<commit>` tag and push that manifest change. We can automate that image-tag update later.
 
-## After merging to main
+## Returning to main after feature-branch testing
 
-The checked-in `argocd/application-dev.yaml` defaults to tracking `main`; the bootstrap command selects the temporary `gitops` branch for testing. After squash-merging `gitops` into `main`, update the VM checkout and switch the existing Application to `main`:
+If the Application temporarily tracks a feature branch, update the **Proxmox VM** checkout after merging and restore the normal revision:
 
 ```bash
-cd ~/german-job-market-analytics
-git fetch origin
 git switch main
 git pull
-sudo bash argocd/bootstrap.sh main
+sudo ./argocd/configure-sync.sh main
 ```
 
-The command reuses the existing Application and namespace; it does not enable pruning. Afterward, changes committed to `main` under `kubernetes/overlays/dev` are synchronized into the existing `dev` namespace.
+The update checks PVC protections again and restores the current GitOps sync policy. No restart of Argo CD is necessary.
 
 ## Scope and security
 
 - The standard Argo CD installer grants substantial cluster privileges. Restrict Git branch write access, Kubernetes administrators and SSH access.
 - The one-node non-HA setup is not high availability. Watch VM CPU, RAM and disk usage.
 - Application secrets, VM provisioning, database migrations and image-build automation are not managed by Argo CD.
-- Do not enable automated pruning or deploy a second complete `prod` stack without considering resource limits and persistent-data backups.
+- Automatic pruning is enabled for ordinary resources; all PVCs require confirmation for pruning and are retained if the Application is deleted. Do not deploy a second complete `prod` stack without considering resource limits and persistent-data backups.
