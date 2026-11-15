@@ -5,6 +5,7 @@ resources:
   - ../../base
   - ingress.yaml
   - cadvisor-rbac.yaml
+  - prune-test.yaml
 images:
   - name: ghcr.io/skrutikov/german-job-market-analytics
     newTag: dev
