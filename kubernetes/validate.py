@@ -19,6 +19,7 @@ EXPECTED_WORKLOADS = {
     "pushgateway",
     "alertmanager",
     "grafana",
+    "kube-state-metrics",
 }
 EXPECTED_SERVICES = EXPECTED_WORKLOADS
 EXPECTED_PVCS = {
@@ -42,8 +43,13 @@ def validate(path: Path, namespace: str) -> None:
     assert "data-update" in names("CronJob")
     assert "job-market" in names("Ingress")
 
+    # ClusterRoles and ClusterRoleBindings are deliberately cluster-scoped.
+    # Every other resource must remain in the selected environment namespace.
     for manifest in manifests:
-        assert manifest["metadata"].get("namespace") == namespace, manifest
+        if manifest["kind"] in {"ClusterRole", "ClusterRoleBinding"}:
+            assert manifest["metadata"].get("namespace") is None, manifest
+        else:
+            assert manifest["metadata"].get("namespace") == namespace, manifest
         assert manifest["kind"] != "Secret", "Credentials must not be committed"
         if manifest["kind"] == "Deployment":
             for container in manifest["spec"]["template"]["spec"]["containers"]:
@@ -51,6 +57,26 @@ def validate(path: Path, namespace: str) -> None:
                 if image.startswith("ghcr.io/skrutikov/"):
                     expected_tag = "dev" if namespace == "dev" else "main"
                     assert image.endswith(":" + expected_tag), image
+
+    # The Prometheus account is allowed read-only access to node cAdvisor.
+    prometheus = objects["Deployment", "prometheus"]
+    assert (
+        prometheus["spec"]["template"]["spec"]["serviceAccountName"]
+        == "job-market-prometheus"
+    )
+    assert "job-market-prometheus" in names("ServiceAccount")
+    assert "kube-state-metrics" in names("Role")
+    assert "kube-state-metrics" in names("RoleBinding")
+
+    role = objects["ClusterRole", f"job-market-{namespace}-cadvisor-reader"]
+    binding = objects["ClusterRoleBinding", f"job-market-{namespace}-cadvisor-reader"]
+    assert binding["subjects"] == [
+        {"kind": "ServiceAccount", "name": "job-market-prometheus", "namespace": namespace}
+    ]
+    assert role["rules"] == [
+        {"apiGroups": [""], "resources": ["nodes"], "verbs": ["get", "list", "watch"]},
+        {"apiGroups": [""], "resources": ["nodes/proxy"], "verbs": ["get"]},
+    ]
 
     etl_job = objects["CronJob", "data-update"]
     assert etl_job["spec"]["suspend"] is True, "Airflow owns the ETL schedule"
