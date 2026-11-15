@@ -9,3 +9,11 @@ images:
     newTag: dev
   - name: ghcr.io/skrutikov/german-job-market-analytics-airflow
     newTag: dev
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: nginx
+        labels:
+          gitops-test: enabled
