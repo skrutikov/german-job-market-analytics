@@ -1,0 +1,25 @@
+# Separate cluster-wide read-only role for each application's namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-market-dev-cadvisor-reader
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [nodes/proxy]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-market-dev-cadvisor-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-market-dev-cadvisor-reader
+subjects:
+  - kind: ServiceAccount
+    name: job-market-prometheus
+    namespace: dev

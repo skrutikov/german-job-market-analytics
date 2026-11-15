@@ -6,6 +6,7 @@ resources:
   - application.yaml
   - airflow.yaml
   - monitoring.yaml
+  - kube-state-metrics.yaml
   - data-update.yaml
 configMapGenerator:
   - name: job-market-settings
@@ -34,3 +35,4 @@ configMapGenerator:
   - name: grafana-dashboard
     files:
       - job-market-dashboard.json=config/job-market-dashboard.json
+      - performance-dashboard.json=config/performance-dashboard.json
