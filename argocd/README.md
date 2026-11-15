@@ -20,9 +20,12 @@ The Application automatically synchronizes and self-heals tracked resources, but
 
 ## Access from the local machine
 
-After installation, restart the existing local SSH tunnel so it discovers the new `argocd-server` Service:
+After installation, update the repository on the **local machine** to this feature branch, then restart the existing SSH tunnel so it discovers the new `argocd-server` Service:
 
 ```bash
+git fetch origin
+git switch gitops
+git pull
 ./kubernetes_stop.sh dev
 ./kubernetes_start.sh dev
 ```
@@ -35,7 +38,7 @@ sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret \
 echo
 ```
 
-Log in with username `admin`, change the default-generated password, and delete the initial-password Secret after rotating it. The access script cannot display your changed password. Keep Argo CD accessible only through your private SSH tunnel, not a public Ingress.
+Log in with username `admin`, change the default-generated password, and delete the initial-password Secret after rotating it (on the Proxmox VM: `sudo k3s kubectl -n argocd delete secret argocd-initial-admin-secret`). The access script cannot display your changed password. Keep Argo CD accessible only through your private SSH tunnel, not a public Ingress.
 
 ## Verify and test GitOps
 
