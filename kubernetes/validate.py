@@ -71,10 +71,18 @@ def validate(path: Path, namespace: str) -> None:
     role = objects["ClusterRole", f"job-market-{namespace}-cadvisor-reader"]
     binding = objects["ClusterRoleBinding", f"job-market-{namespace}-cadvisor-reader"]
     assert binding["subjects"] == [
-        {"kind": "ServiceAccount", "name": "job-market-prometheus", "namespace": namespace}
+        {
+            "kind": "ServiceAccount",
+            "name": "job-market-prometheus",
+            "namespace": namespace,
+        }
     ]
     assert role["rules"] == [
-        {"apiGroups": [""], "resources": ["nodes"], "verbs": ["get", "list", "watch"]},
+        {
+            "apiGroups": [""],
+            "resources": ["nodes"],
+            "verbs": ["get", "list", "watch"],
+        },
         {"apiGroups": [""], "resources": ["nodes/proxy"], "verbs": ["get"]},
     ]
 
