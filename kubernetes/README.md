@@ -1,6 +1,6 @@
 # Kubernetes application deployment
 
-Kustomize deploys Job Market Analytics to the single-node k3s cluster provisioned by [Terraform and Ansible](../infrastructure/README.md). The Docker Compose deployment is unchanged.
+Kustomize deploys Job Market Analytics to the single-node k3s cluster provisioned by [Terraform and Ansible](../infrastructure/README.md). The Docker Compose deployment is unchanged. For GitOps synchronization, see the [Argo CD guide](../argocd/README.md).
 
 ## Components
 
@@ -28,7 +28,7 @@ The overlays in `kubernetes/overlays/dev` and `kubernetes/overlays/prod` isolate
 
 | Branch | Application image | Airflow image |
 |---|---|---|
-| `kubernetes-deployment` | `ghcr.io/skrutikov/german-job-market-analytics:dev` | `ghcr.io/skrutikov/german-job-market-analytics-airflow:dev` |
+| `gitops` | `ghcr.io/skrutikov/german-job-market-analytics:dev` | `ghcr.io/skrutikov/german-job-market-analytics-airflow:dev` |
 | `main` | `ghcr.io/skrutikov/german-job-market-analytics:main` | `ghcr.io/skrutikov/german-job-market-analytics-airflow:main` |
 
 Wait for the **publish** workflow to finish before deploying. GitHub may initially make new packages private. Either change their visibility to public or configure an authorized GHCR `imagePullSecret` in the target namespace before applying resources. For private packages, a token with `read:packages` is required. Credentials must never be committed to the repository.
@@ -45,11 +45,11 @@ sudo k3s kubectl get storageclass
 df -h /
 sudo apt-get update
 sudo apt-get install -y git openssl
-git clone --branch kubernetes-deployment https://github.com/skrutikov/german-job-market-analytics.git
+git clone https://github.com/skrutikov/german-job-market-analytics.git
 cd german-job-market-analytics
 ```
 
-If this repository is already cloned on the VM, switch to `kubernetes-deployment` and pull instead.
+If this repository is already cloned on the Proxmox VM, switch to the intended branch and pull instead.
 
 Elasticsearch on Linux may require the following kernel setting **on the Proxmox VM, not the Proxmox host**:
 
@@ -96,7 +96,7 @@ The cluster runs on a Proxmox VM with a private IP address. Run the root-level *
 ```bash
 cd ~/german-job-market-analytics
 git fetch origin
-git switch kubernetes-deployment
+git switch main
 git pull
 
 ./kubernetes_start.sh dev
@@ -151,7 +151,7 @@ ssh -N -L 8088:127.0.0.1:8088 k3s-vm
 
 The manual forwarding processes must remain running. This fallback is separate from `kubernetes_start.sh`.
 
-The optional Traefik Ingress hosts (`job-market-dev.test` and `job-market.test`) are example names, not public DNS records; they require suitable routing and DNS.
+The optional Traefik Ingress hosts (`job-market-dev.test` and `job-market.test`) are example names, not public DNS records; they require suitable routing and DNS. After installing Argo CD, the local access script also provides its HTTPS UI; see the [Argo CD access guide](../argocd/README.md#access-from-the-local-machine).
 
 ## 5. Run ETL
 

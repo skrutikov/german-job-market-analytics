@@ -55,8 +55,10 @@ done
 # Non-overlapping local ports let both environments be accessed if the VM has capacity.
 if [[ "$environment" == "dev" ]]; then
     ports=(8088 18080 13000 19090 19093 19200 19091)
+    argocd_local_port=18443
 else
     ports=(28088 28080 23000 29090 29093 29200 29091)
+    argocd_local_port=28443
 fi
 services=(nginx airflow grafana prometheus alertmanager elasticsearch pushgateway)
 service_ports=(80 8080 3000 9090 9093 9200 9091)
@@ -104,6 +106,16 @@ print("\n".join(by_name[name] for name in names))
         forwards+=(-L "127.0.0.1:${ports[$i]}:$ip:${service_ports[$i]}")
     done
 
+    # Argo CD is an optional service in its own namespace, shared across environments.
+    # A missing Argo CD installation must not prevent normal application access.
+    if argocd_ip="$(ssh "${ssh_args[@]}" "$vm" \
+        "sudo -n k3s kubectl -n argocd get service argocd-server -o jsonpath='{.spec.clusterIP}'" 2>/dev/null)"; then
+        if [[ "$argocd_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            forwards+=(-L "127.0.0.1:$argocd_local_port:$argocd_ip:443")
+        fi
+    fi
+    unset argocd_ip
+
     echo "Starting a background SSH tunnel (only localhost ports are exposed)..."
     if ! ssh "${ssh_args[@]}" -o ExitOnForwardFailure=yes \
         -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
@@ -133,6 +145,12 @@ printf 'Prometheus:    http://127.0.0.1:%s/\n' "${ports[3]}"
 printf 'Alertmanager:  http://127.0.0.1:%s/\n' "${ports[4]}"
 printf 'Elasticsearch: http://127.0.0.1:%s/\n' "${ports[5]}"
 printf 'Pushgateway:   http://127.0.0.1:%s/\n' "${ports[6]}"
+argocd_reachable=false
+if curl -kfsS --connect-timeout 2 --max-time 5 \
+    "https://127.0.0.1:$argocd_local_port/" >/dev/null 2>&1; then
+    printf 'Argo CD:       https://127.0.0.1:%s/ (self-signed certificate)\n' "$argocd_local_port"
+    argocd_reachable=true
+fi
 
 echo
 echo "Credentials (sensitive; displayed only on this terminal):"
@@ -173,6 +191,21 @@ else
     echo "Could not read Airflow credentials (is Airflow running?)." >&2
 fi
 unset airflow_json
+
+if [[ "$argocd_reachable" == true ]]; then
+    # Show only the initial password, if still present. Never print a rotated password.
+    if argocd_password_b64="$(ssh "${ssh_args[@]}" "$vm" \
+        "sudo -n k3s kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}'" 2>/dev/null)" \
+        && [[ -n "$argocd_password_b64" ]]; then
+        if argocd_password="$(printf '%s' "$argocd_password_b64" | base64 -d)"; then
+            printf 'Argo CD:    admin / %s (initial password)\n' "$argocd_password"
+            unset argocd_password
+        fi
+    else
+        echo "Argo CD:    admin / password changed or initial secret unavailable"
+    fi
+    unset argocd_password_b64
+fi
 
 echo
 echo "Keep these passwords private; they are not saved locally."
