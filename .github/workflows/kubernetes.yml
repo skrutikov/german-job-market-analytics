@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, gitops]
+    branches: [main, performance-monitoring]
   workflow_dispatch:
 
 permissions:
@@ -15,8 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check Kubernetes access script syntax
-        run: bash -n kubernetes_start.sh kubernetes_stop.sh argocd/bootstrap.sh
+      - name: Check shell and k6 JavaScript syntax
+        run: |
+          bash -n kubernetes_start.sh kubernetes_stop.sh argocd/bootstrap.sh
+          node --input-type=module --check < performance/k6/job-search.js
       - uses: azure/setup-kubectl@v4
         with:
           version: v1.33.0
@@ -37,6 +39,17 @@ jobs:
           assert app["spec"]["source"]["targetRevision"] == "main"
           assert app["spec"]["destination"]["namespace"] == "dev"
           assert app["spec"]["syncPolicy"]["automated"]["prune"] is False
+          PY
+      - name: Validate Grafana performance dashboard
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          dashboard = json.loads(Path("kubernetes/base/config/performance-dashboard.json").read_text())
+          assert dashboard["uid"] == "job-market-performance"
+          assert len(dashboard["panels"]) >= 8
+          assert len({panel["id"] for panel in dashboard["panels"]}) == len(dashboard["panels"])
+          assert all(panel["targets"] for panel in dashboard["panels"])
           PY
       - name: Validate rendered Kustomize overlays
         run: |

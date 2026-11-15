@@ -4,6 +4,7 @@ namespace: prod
 resources:
   - ../../base
   - ingress.yaml
+  - cadvisor-rbac.yaml
 images:
   - name: ghcr.io/skrutikov/german-job-market-analytics
     newTag: main

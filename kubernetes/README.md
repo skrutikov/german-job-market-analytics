@@ -1,6 +1,6 @@
 # Kubernetes application deployment
 
-Kustomize deploys Job Market Analytics to the single-node k3s cluster provisioned by [Terraform and Ansible](../infrastructure/README.md). The Docker Compose deployment is unchanged. For GitOps synchronization, see the [Argo CD guide](../argocd/README.md).
+Kustomize deploys Job Market Analytics to the single-node k3s cluster provisioned by [Terraform and Ansible](../infrastructure/README.md). The Docker Compose deployment is unchanged. For GitOps synchronization, see the [Argo CD guide](../argocd/README.md). For Prometheus container monitoring and k6 load tests, see the [performance guide](../performance/README.md).
 
 ## Components
 
@@ -17,6 +17,7 @@ Kustomize deploys Job Market Analytics to the single-node k3s cluster provisione
 | Pushgateway | Deployment + Service |
 | Alertmanager | Deployment + Service |
 | Grafana | Deployment + Service + persistent volume claim |
+| kube-state-metrics | Deployment + Service; namespace-scoped Pod restart/health metrics |
 
 The overlays in `kubernetes/overlays/dev` and `kubernetes/overlays/prod` isolate the environments into their respective namespaces. Each environment uses its own Services, PVCs and credentials.
 
