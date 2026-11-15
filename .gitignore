@@ -90,3 +90,6 @@ target/
 
 # Mypy cache
 .mypy_cache/
+
+# Local load-test reports (do not commit performance data)
+/performance/results/
