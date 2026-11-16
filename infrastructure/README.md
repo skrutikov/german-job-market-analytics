@@ -157,7 +157,14 @@ pveum acl modify /vms/VM_ID \
 
 Run the first command again to verify `VM.Allocate` (and the `VM.Config.*` privileges). Use only an approved, unused VM ID; the example configuration uses **100**. Do **not** give the token cluster-wide VM administration permissions.
 
-#### After recreation: verify and refresh the VM's SSH host key
+The essential distinction:
+
+- **One-time host setup:** create the token and configure permissions for shared storage and VNet (Section A).
+- **Per-VM provisioning/reprovisioning:** check `/vms/VM_ID` and grant `PVEVMAdmin` there when missing (Section B). Recheck after `destroy.sh`, because VM deletion can remove this ACL.
+
+If `VM.Allocate` is still absent, check the underlying owner permissions with `pveum user permissions root1@pve --path /vms/VM_ID` (substitute the ID). **HTTP 401** indicates an authentication issue (invalid token/secret), while **HTTP 403** generally indicates insufficient authorization.
+
+##### After recreation: verify and refresh the VM's SSH host key
 
 A replacement Ubuntu VM generates **new SSH host keys**, even if its VM ID
 and private IP are unchanged. The first `./deploy.sh` attempt may therefore
@@ -197,12 +204,6 @@ simply mean the new VM is booting; persistent connection failures after the
 host-key update may indicate separate network, SSH server, or jump-host issues.
 
 
-The essential distinction:
-
-- **One-time host setup:** create the token and configure permissions for shared storage and VNet (Section A).
-- **Per-VM provisioning/reprovisioning:** check `/vms/VM_ID` and grant `PVEVMAdmin` there when missing (Section B). Recheck after `destroy.sh`, because VM deletion can remove this ACL.
-
-If `VM.Allocate` is still absent, check the underlying owner permissions with `pveum user permissions root1@pve --path /vms/VM_ID` (substitute the ID). **HTTP 401** indicates an authentication issue (invalid token/secret), while **HTTP 403** generally indicates insufficient authorization.
 
 ### Create the SSH jump account
 
