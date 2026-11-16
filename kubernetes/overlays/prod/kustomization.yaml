@@ -5,6 +5,13 @@ resources:
   - ../../base
   - ingress.yaml
   - cadvisor-rbac.yaml
+# Keep common application configuration in ../../base; override only
+# environment-specific values in this overlay.
+configMapGenerator:
+  - name: job-market-settings
+    behavior: merge
+    literals:
+      - DEPLOYMENT_ENV=production
 images:
   - name: ghcr.io/skrutikov/german-job-market-analytics
     newTag: sha-ab8f1b33ac22ee73b45e9090fd79ee60ec28b75b

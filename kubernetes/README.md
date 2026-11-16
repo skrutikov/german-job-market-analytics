@@ -21,6 +21,44 @@ Kustomize deploys Job Market Analytics to the single-node k3s cluster provisione
 
 The overlays in `kubernetes/overlays/dev` and `kubernetes/overlays/prod` isolate the environments into their respective namespaces. Each environment uses its own Services, PVCs and credentials.
 
+### Environment-specific configuration
+
+The base Kustomize `job-market-settings` ConfigMap contains shared values,
+such as private service URLs, `FRONTEND_PORT=8050`, and `DASH_DEBUG=false`.
+Each environment overlay **merges** its own `DEPLOYMENT_ENV` value into
+that ConfigMap without duplicating or modifying the common settings:
+
+| Setting | Dev | Prod |
+|---|---|---|
+| `DEPLOYMENT_ENV` | `development` | `production` |
+| Namespace | `dev` | `prod` |
+| Ingress host | `job-market-dev.test` | `job-market.test` |
+| Application/Airflow image tags | Automatic tested SHA | Approved promotion SHA |
+| PostgreSQL/Grafana credentials and PVCs | Separate | Separate |
+
+`DEPLOYMENT_ENV` is a **configuration marker** available to the backend,
+frontend and Airflow containers through their existing `envFrom` references.
+It currently does not change application behavior. We intentionally leave
+`DASH_DEBUG=false` in both environments; enabling development debug mode
+could expose debugging information and is not needed to show separation.
+
+Argo CD tracks `main` for dev but the separate, approved `production`
+branch for prod. Merging a change to `main` updates **dev only** until
+the next approved production promotion. Don't manually apply the prod
+overlay from `main`, because that would bypass the release process.
+
+To inspect the applied configuration on the **Ubuntu VM** after deployment,
+without reading any secrets:
+
+```bash
+sudo k3s kubectl -n dev exec deployment/backend -- printenv DEPLOYMENT_ENV
+sudo k3s kubectl -n prod exec deployment/backend -- printenv DEPLOYMENT_ENV
+```
+
+Expected values after **both** revisions have deployed: `development`
+and `production`. The production value will only appear after an approved
+promotion, because production intentionally stays on its own Git branch.
+
 **Security and scope:** The current Airflow configuration uses `airflow standalone` (SQLite metadata database), intended for development and demonstration, not production-grade Airflow. Elasticsearch's security is disabled for its private cluster Service, as in Docker Compose. The example Ingress is plain HTTP. Do **not** expose this setup to the public internet without authentication, TLS and network restrictions. Single-node k3s and local-path storage are not highly available.
 
 ## 1. CI images, automatic dev deployment and production promotion
@@ -216,20 +254,38 @@ cd ~/german-job-market-analytics
 bash init_airflow.sh
 ```
 
-The script waits for the Airflow Deployment to be ready, prints its version
-and registered DAGs, unpauses `job_market_etl`, triggers **one new manual run**,
-and displays up to five recent DAG runs. It does **not wait** for the ETL to
-finish: a new run will initially show as `queued` or `running`. Re-run
-`airflow dags list-runs` or use the Airflow UI later to confirm `success`.
+The script checks the Airflow deployment and DAG, enables scheduling if
+the DAG was paused, and **checks for any queued/running ETL run before
+triggering another**. If a run is already queued or running, it skips the
+manual trigger. If the DAG was initially paused, it unpauses scheduling but
+does **not** also create a manual run: the scheduler may immediately create
+a scheduled run itself. This avoids the double initialization we saw in prod.
 
-**Each execution of `init_airflow.sh` triggers another run.** Do not rerun
-it just to check progress, and do not overlap a manual ETL with another active
-ETL job. To check current runs without triggering again:
+If the DAG was already unpaused and has no active runs, `init_airflow.sh`
+triggers one manual run. The script checks the complete DAG-run state list
+using Airflow 3.4's structured JSON output (rather than only the five most
+recent rows). If a status command or JSON parsing fails, it **refuses to
+trigger**. This is a best-effort safeguard, not an atomic lock against a
+second operator triggering a run at exactly the same moment.
+
+For a **read-only status check** that never triggers another ETL:
 
 ```bash
-sudo k3s kubectl -n dev exec deployment/airflow -- \
+bash check_airflow_state.sh dev
+bash check_airflow_state.sh prod
+```
+
+The status script prints the five latest DAG runs for the selected namespace;
+the default is `dev`. These are equivalent to:
+
+```bash
+sudo k3s kubectl -n prod exec deployment/airflow -- \
   airflow dags list-runs job_market_etl --limit 5
 ```
+
+Don't rerun `init_airflow.sh` just to check progress. After the active run
+finishes, a subsequent invocation can trigger another ETL. These scripts
+don't detect independently launched `data-update` Kubernetes Jobs.
 
 Airflow's DAG schedules the daily ETL at **06:00**, writing to PostgreSQL and Elasticsearch and publishing ETL metrics to Pushgateway. Airflow's `/opt/airflow/data` and the manual ETL runner's `/app/data` share a PVC.
 

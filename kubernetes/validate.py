@@ -50,6 +50,30 @@ def validate(path: Path, namespace: str) -> None:
     assert "data-update" in names("CronJob")
     assert "job-market" in names("Ingress")
 
+    # Overlay-specific environment variable is merged into the shared
+    # generated ConfigMap. Ensure Kustomize rewrites envFrom references to
+    # its hashed name and that the other shared settings remain intact.
+    settings_maps = [
+        m
+        for m in manifests
+        if m["kind"] == "ConfigMap"
+        and m["metadata"]["name"].startswith("job-market-settings-")
+    ]
+    assert len(settings_maps) == 1, settings_maps
+    settings = settings_maps[0]
+    assert settings["data"]["DEPLOYMENT_ENV"] == (
+        "development" if namespace == "dev" else "production"
+    )
+    assert settings["data"]["DASH_DEBUG"] == "false"
+    settings_ref = {"configMapRef": {"name": settings["metadata"]["name"]}}
+    for deployment in ("backend", "frontend", "airflow"):
+        containers = objects["Deployment", deployment]["spec"]["template"]["spec"][
+            "containers"
+        ]
+        assert any(
+            settings_ref in container.get("envFrom", []) for container in containers
+        ), deployment
+
     # ClusterRoles and ClusterRoleBindings are deliberately cluster-scoped.
     # Every other resource must remain in the selected environment namespace.
     application_image_tags = set()
