@@ -157,6 +157,46 @@ pveum acl modify /vms/VM_ID \
 
 Run the first command again to verify `VM.Allocate` (and the `VM.Config.*` privileges). Use only an approved, unused VM ID; the example configuration uses **100**. Do **not** give the token cluster-wide VM administration permissions.
 
+#### After recreation: verify and refresh the VM's SSH host key
+
+A replacement Ubuntu VM generates **new SSH host keys**, even if its VM ID
+and private IP are unchanged. The first `./deploy.sh` attempt may therefore
+print `WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!` and retry SSH
+connections. This is expected after a deliberate rebuild, **but verify the
+new key before trusting it**.
+
+1. Stop the SSH retry loop (Ctrl+C). Terraform has already created the VM;
+   you do **not** need to destroy or recreate it again.
+2. On the new VM's **trusted Proxmox web console**, display its ED25519 SSH
+   host-key fingerprint:
+
+   ```bash
+   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+   ```
+
+   Compare the complete `SHA256:...` fingerprint against the one SSH
+   reported when connecting to the recreated VM. If they differ, investigate
+   before proceeding; do not just disable SSH host-key checking.
+3. **Only after the fingerprints match**, on the **local machine** as the
+   same user that runs `./deploy.sh`, remove the obsolete entry:
+
+   ```bash
+   ssh-keygen -f "$HOME/.ssh/known_hosts" -R 10.10.10.20
+   ```
+
+   Substitute the current `VM_IP` for the example `10.10.10.20`.
+   In particular, if running from a `root@` shell, this is
+   `/root/.ssh/known_hosts`, not another user's SSH key database.
+4. Run `./deploy.sh` again from the repository root. Terraform reuses the
+   already-managed VM and the script continues with SSH, Cloud-Init, and
+   Ansible. When prompted to trust the new fingerprint, accept it **only if
+   it matches the one independently verified in the VM console**.
+
+`No route to host` or `Connection refused` during the first attempts can
+simply mean the new VM is booting; persistent connection failures after the
+host-key update may indicate separate network, SSH server, or jump-host issues.
+
+
 The essential distinction:
 
 - **One-time host setup:** create the token and configure permissions for shared storage and VNet (Section A).
