@@ -56,9 +56,9 @@ fresh VM yet, download just the bootstrap script from `main`:
 ```bash
 sudo apt-get update
 sudo apt-get install -y curl
-curl -fsSLo setup_vm.sh \
+curl -fsSLo /tmp/job-market-setup-vm.sh \
   https://raw.githubusercontent.com/skrutikov/german-job-market-analytics/main/setup_vm.sh
-bash setup_vm.sh
+bash /tmp/job-market-setup-vm.sh
 ```
 
 Inspect the downloaded script before executing it if desired. It checks k3s,
