@@ -1,6 +1,6 @@
 # Kubernetes application deployment
 
-Kustomize deploys Job Market Analytics to the single-node k3s cluster provisioned by [Terraform and Ansible](../infrastructure/README.md). The Docker Compose deployment is unchanged. For GitOps synchronization, see the [Argo CD guide](../argocd/README.md). For Prometheus container monitoring and k6 load tests, see the [performance guide](../performance/README.md).
+Kustomize deploys Job Market Analytics to the single-node k3s cluster provisioned by [Terraform and Ansible](../infrastructure/README.md). The Docker Compose deployment is unchanged. For GitOps synchronization, see the [Argo CD guide](../argocd/README.md). For Prometheus container monitoring and k6 load tests, see the [performance guide](../performance/README.md). For repository and container vulnerability scanning in CI, see the [Trivy security guide](../security/README.md).
 
 ## Components
 

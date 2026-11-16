@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, slo-alerting]
+    branches: [main, trivy-scanning]
   workflow_dispatch:
 
 permissions:
@@ -75,6 +75,8 @@ jobs:
           assert len({panel["id"] for panel in dashboard["panels"]}) == 8
           assert all(panel["targets"] for panel in dashboard["panels"])
           PY
+      - name: Validate security workflow
+        run: python security/validate_workflow.py
       - name: Validate rendered Kustomize overlays
         run: |
           for environment in dev prod; do
