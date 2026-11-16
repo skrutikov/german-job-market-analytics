@@ -21,6 +21,44 @@ Kustomize deploys Job Market Analytics to the single-node k3s cluster provisione
 
 The overlays in `kubernetes/overlays/dev` and `kubernetes/overlays/prod` isolate the environments into their respective namespaces. Each environment uses its own Services, PVCs and credentials.
 
+### Environment-specific configuration
+
+The base Kustomize `job-market-settings` ConfigMap contains shared values,
+such as private service URLs, `FRONTEND_PORT=8050`, and `DASH_DEBUG=false`.
+Each environment overlay **merges** its own `DEPLOYMENT_ENV` value into
+that ConfigMap without duplicating or modifying the common settings:
+
+| Setting | Dev | Prod |
+|---|---|---|
+| `DEPLOYMENT_ENV` | `development` | `production` |
+| Namespace | `dev` | `prod` |
+| Ingress host | `job-market-dev.test` | `job-market.test` |
+| Application/Airflow image tags | Automatic tested SHA | Approved promotion SHA |
+| PostgreSQL/Grafana credentials and PVCs | Separate | Separate |
+
+`DEPLOYMENT_ENV` is a **configuration marker** available to the backend,
+frontend and Airflow containers through their existing `envFrom` references.
+It currently does not change application behavior. We intentionally leave
+`DASH_DEBUG=false` in both environments; enabling development debug mode
+could expose debugging information and is not needed to show separation.
+
+Argo CD tracks `main` for dev but the separate, approved `production`
+branch for prod. Merging a change to `main` updates **dev only** until
+the next approved production promotion. Don't manually apply the prod
+overlay from `main`, because that would bypass the release process.
+
+To inspect the applied configuration on the **Ubuntu VM** after deployment,
+without reading any secrets:
+
+```bash
+sudo k3s kubectl -n dev exec deployment/backend -- printenv DEPLOYMENT_ENV
+sudo k3s kubectl -n prod exec deployment/backend -- printenv DEPLOYMENT_ENV
+```
+
+Expected values after **both** revisions have deployed: `development`
+and `production`. The production value will only appear after an approved
+promotion, because production intentionally stays on its own Git branch.
+
 **Security and scope:** The current Airflow configuration uses `airflow standalone` (SQLite metadata database), intended for development and demonstration, not production-grade Airflow. Elasticsearch's security is disabled for its private cluster Service, as in Docker Compose. The example Ingress is plain HTTP. Do **not** expose this setup to the public internet without authentication, TLS and network restrictions. Single-node k3s and local-path storage are not highly available.
 
 ## 1. CI images, automatic dev deployment and production promotion
