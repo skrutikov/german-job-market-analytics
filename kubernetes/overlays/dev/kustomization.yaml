@@ -6,7 +6,9 @@ resources:
   - ingress.yaml
   - cadvisor-rbac.yaml
 images:
+  # Both dev and prod use images built from the security-scanned main branch.
+  # "dev" names the Kubernetes namespace, not a moving CI image tag.
   - name: ghcr.io/skrutikov/german-job-market-analytics
-    newTag: dev
+    newTag: main
   - name: ghcr.io/skrutikov/german-job-market-analytics-airflow
-    newTag: dev
+    newTag: main

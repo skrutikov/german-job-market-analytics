@@ -130,6 +130,13 @@ vulnerabilities automatically, or guarantee that the running cluster uses
 the exact image bytes examined by CI. The cluster itself, host hardening,
 RBAC and externally exposed endpoints need independent reviews.
 
-No Kubernetes deployment manifest or PVC is changed by this feature.
-We can merge this branch after its workflow jobs have passed and the
-reporting behavior has been checked.
+The `dev` Kustomize overlay selects the `:main` application and Airflow
+images (instead of stale `:dev` tags). After this PR merges, the secured
+GHCR `:main` image is published; **Argo CD tracking `main` may reconcile
+the updated deployment onto an existing cluster automatically**. Because
+Airflow 3.4.0 migrates its state, do not rely on an automatic in-place upgrade
+if old Airflow history must be preserved. Our intentionally disposable lab VM
+is rebuilt from scratch using `./destroy.sh` and `./deploy.sh`; the original
+PVCs and Airflow metadata are not restored. The safety and VM rebuild steps
+are in [infrastructure/README.md](../infrastructure/README.md).
+Trivy itself does not add or modify any PVC, Secret, or app credentials.
