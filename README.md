@@ -72,6 +72,8 @@ FastAPI provides the application API, which is consumed by the Dash frontend. Ng
 
 See [Proxmox infrastructure deployment](infrastructure/README.md) for Terraform provisioning, Ansible configuration, SSH access and Kubernetes cluster verification. See [Kubernetes application deployment](kubernetes/README.md) for deploying the application and monitoring services on k3s. See [Argo CD GitOps](argocd/README.md) for synchronizing deployed Kubernetes resources from Git. See [Performance monitoring and k6](performance/README.md) for load tests, request latency and Kubernetes resource monitoring. See [SLOs and alerting](slo/README.md) for reliability objectives, Prometheus alerts, a Grafana SLO dashboard and a safe alert test. See [Trivy security scanning](security/README.md) for automated source, configuration and container vulnerability scans.
 
+On a freshly provisioned Ubuntu k3s VM, use [`setup_vm.sh`](kubernetes/README.md#quick-start-setup_vmsh-recommended-for-a-fresh-vm) to install the application and Argo CD in one step; then run [`init_airflow.sh`](kubernetes/README.md#quick-start-init_airflowsh) to enable and trigger the first ETL. These two scripts run **on the Ubuntu VM**, not the local machine or Proxmox host.
+
 After the application is deployed on the Kubernetes VM, run `./kubernetes_start.sh dev` **from the local machine** to open the browser access tunnels in the background and display service URLs and login credentials. Stop with `./kubernetes_stop.sh dev`. See the [Kubernetes access instructions](kubernetes/README.md#4-access-from-the-local-machine-one-background-ssh-tunnel).
 
 ## Usage
