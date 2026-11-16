@@ -1,0 +1,26 @@
+# Avoid copying VCS metadata, local tooling, and possible credentials into images.
+# The application needs its source tree and data/samples, so do not exclude those.
+.git
+.github
+.venv
+venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.cache
+*.egg-info
+.env
+.env.*
+!.env.example
+.ssh
+*.pem
+*.key
+*.p12
+*.pfx
+*.tfstate
+*.tfstate.*
+**/.terraform
+performance/results
+security/results

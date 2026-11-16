@@ -1,0 +1,136 @@
+name: Trivy security scanning
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, trivy-scanning]
+  schedule:
+    # Recheck existing dependencies against newly published advisories every Monday.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: trivy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  repository:
+    name: Source, secrets and IaC
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Scan repository (SARIF report)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.74.0
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          limit-severities-for-sarif: true
+          format: sarif
+          output: trivy-repository.sarif
+          exit-code: "0"
+
+      - name: Upload report to GitHub code scanning
+        if: ${{ !cancelled() && hashFiles('trivy-repository.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-repository.sarif
+          category: trivy-repository
+
+      - name: Save repository scan report
+        if: ${{ !cancelled() && hashFiles('trivy-repository.sarif') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-repository-sarif
+          path: trivy-repository.sarif
+          retention-days: 14
+
+      # Keep the report even when the policy step blocks this change.
+      - name: Fail on fixable critical risks or detected critical secrets
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.74.0
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: "1"
+
+  container_images:
+    name: Container - ${{ matrix.component }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: application
+            dockerfile: Dockerfile
+          - component: airflow
+            dockerfile: airflow/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Build exactly the source/Dockerfile under review; no registry push,
+      # no Kubernetes deployment, and no credentials needed for local images.
+      - name: Build container locally for analysis
+        run: |
+          docker build \
+            -f "${{ matrix.dockerfile }}" \
+            -t "job-market-trivy-${{ matrix.component }}:${{ github.sha }}" .
+
+      - name: Scan container (SARIF report)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.74.0
+          scan-type: image
+          image-ref: job-market-trivy-${{ matrix.component }}:${{ github.sha }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          limit-severities-for-sarif: true
+          format: sarif
+          output: trivy-${{ matrix.component }}.sarif
+          exit-code: "0"
+
+      - name: Upload image findings to GitHub code scanning
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-${{ matrix.component }}.sarif
+          category: trivy-image-${{ matrix.component }}
+
+      - name: Save image scan report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-${{ matrix.component }}-sarif
+          path: trivy-${{ matrix.component }}.sarif
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Block fixable critical container vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.74.0
+          scan-type: image
+          image-ref: job-market-trivy-${{ matrix.component }}:${{ github.sha }}
+          scanners: vuln
+          severity: CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: "1"
