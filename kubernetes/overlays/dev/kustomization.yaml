@@ -6,9 +6,9 @@ resources:
   - ingress.yaml
   - cadvisor-rbac.yaml
 images:
-  # Both dev and prod use images built from the security-scanned main branch.
-  # "dev" names the Kubernetes namespace, not a moving CI image tag.
+  # CI advances dev to the newly published, security-scanned immutable release.
+  # Production uses a separate, approval-controlled Git branch.
   - name: ghcr.io/skrutikov/german-job-market-analytics
-    newTag: main
+    newTag: sha-fcb77a1bb0cae52147f34148164d421e666563fa
   - name: ghcr.io/skrutikov/german-job-market-analytics-airflow
-    newTag: main
+    newTag: sha-fcb77a1bb0cae52147f34148164d421e666563fa

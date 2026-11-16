@@ -1,0 +1,115 @@
+name: Promote tested dev release to production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: "Full 40-character Git SHA currently pinned and verified in dev"
+        required: true
+        type: string
+      dev_verification:
+        description: "Link or notes: dev Argo CD Synced/Healthy, workloads and ETL checked"
+        required: true
+        type: string
+      confirmation:
+        description: "Type PROMOTE to approve this production release"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: job-market-production-promotion
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Require explicitly verified dev release
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          DEV_VERIFICATION: ${{ inputs.dev_verification }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+            echo "Run this workflow from main only." >&2
+            exit 1
+          }
+          [[ "$CONFIRMATION" == "PROMOTE" ]] || {
+            echo "Type PROMOTE to authorize this release." >&2
+            exit 1
+          }
+          [[ ${#DEV_VERIFICATION} -ge 12 ]] || {
+            echo "Provide a meaningful dev verification link or notes." >&2
+            exit 1
+          }
+          python -m pip install PyYAML==6.0.2
+          python scripts/release_images.py check-dev "$RELEASE_SHA"
+
+  promote:
+    needs: verify
+    # IMPORTANT: Configure required reviewers for the GitHub 'production'
+    # environment. Without that repo setting this job is manual but has
+    # no separate reviewer approval.
+    environment:
+      name: production
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.33.0
+      - name: Advance only the approved production GitOps branch
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          python -m pip install PyYAML==6.0.2
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -B release-candidate origin/main
+          # Reject stale or untested release after a long approval wait.
+          python scripts/release_images.py check-dev "$RELEASE_SHA"
+
+          if git ls-remote --exit-code --heads origin production >/dev/null; then
+            git fetch origin production:refs/remotes/origin/production
+            git checkout -B production origin/production
+            # Bring newly approved manifests onto the independently gated branch.
+            git merge --no-edit --no-ff release-candidate
+          else
+            # First approval creates the production branch. Before this point
+            # there is NO production Argo CD revision for a cluster to sync.
+            git checkout -B production release-candidate
+          fi
+
+          # Explicitly reject images that were not successfully shipped to dev.
+          python scripts/release_images.py promote-prod "$RELEASE_SHA"
+          kubectl kustomize kubernetes/overlays/prod > /tmp/job-market-prod.yaml
+          python kubernetes/validate.py /tmp/job-market-prod.yaml prod
+          git add kubernetes/overlays/prod/kustomization.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(gitops): approve sha-$RELEASE_SHA for prod [skip ci]"
+          fi
+          git push origin HEAD:refs/heads/production
+          echo "Approved sha-$RELEASE_SHA on 'production'. Argo CD will sync if configured."
