@@ -95,6 +95,15 @@ jobs:
             -f "${{ matrix.dockerfile }}" \
             -t "job-market-trivy-${{ matrix.component }}:${{ github.sha }}" .
 
+      - name: Check Airflow CLI and project imports
+        if: ${{ matrix.component == 'airflow' }}
+        run: |
+          docker run --rm --entrypoint airflow \
+            "job-market-trivy-airflow:${{ github.sha }}" version
+          docker run --rm --entrypoint python \
+            "job-market-trivy-airflow:${{ github.sha }}" \
+            -c "from airflow.sdk import dag, task; import job_market; print('Airflow imports OK')"
+
       - name: Scan container (SARIF report)
         uses: aquasecurity/trivy-action@v0.36.0
         with:

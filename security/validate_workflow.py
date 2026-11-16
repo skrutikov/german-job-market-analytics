@@ -38,8 +38,7 @@ def validate() -> None:
         ]
         assert len(scans) == 2
         assert all(
-            scan["uses"] == "aquasecurity/trivy-action@v0.36.0"
-            for scan in scans
+            scan["uses"] == "aquasecurity/trivy-action@v0.36.0" for scan in scans
         )
         assert all(scan["with"]["version"] == "v0.74.0" for scan in scans)
         report, gate = scans
@@ -60,7 +59,11 @@ def validate() -> None:
     repo_steps = jobs["repository"]["steps"]
     assert repo_steps[1]["with"]["scanners"] == "vuln,secret,misconfig"
     image_steps = jobs["container_images"]["steps"]
-    assert image_steps[2]["with"]["scanners"] == "vuln"
+    image_scans = [
+        step for step in image_steps if step.get("with", {}).get("scan-type") == "image"
+    ]
+    assert len(image_scans) == 2
+    assert image_scans[0]["with"]["scanners"] == "vuln"
     assert ".git" in Path(".dockerignore").read_text()
 
     pipeline = yaml.load(

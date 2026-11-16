@@ -18,6 +18,16 @@ The **container scans** inspect the packages actually installed by each image
 build. All images are built on the GitHub runner and are **not pushed or deployed**
 by this workflow.
 
+The Airflow Dockerfile has also been updated from `apache/airflow:3.3.0`
+to the officially released `3.4.0` base after the first Trivy scan reported
+multiple fixable CRITICAL dependency findings in the old image. The image
+CI includes a basic `airflow version` and Python import smoke check. This
+is **not** a live Airflow upgrade: the running k3s Pods continue using their
+existing images until a separate rollout. Airflow 3.4.0 changes its metadata
+database/XCom schema, so back up the Airflow state PVC and test the DAG
+before replacing the live image; downgrading across this release is not
+necessarily trivial. See the [Airflow 3.4.0 release notes](https://airflow.apache.org/docs/apache-airflow/3.4.0/release_notes.html).
+
 The new `.dockerignore` prevents Git metadata, local environments, common
 private key formats and Terraform state from being copied by `Dockerfile`'s
 `COPY . .`. It does not replace correct secret management; do not put real
