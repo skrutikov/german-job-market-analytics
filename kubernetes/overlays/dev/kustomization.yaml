@@ -9,6 +9,6 @@ images:
   # CI advances dev to the newly published, security-scanned immutable release.
   # Production uses a separate, approval-controlled Git branch.
   - name: ghcr.io/skrutikov/german-job-market-analytics
-    newTag: sha-ab8f1b33ac22ee73b45e9090fd79ee60ec28b75b
+    newTag: sha-82fbab7a43791950817da55ff8d460cf5954bdd5
   - name: ghcr.io/skrutikov/german-job-market-analytics-airflow
-    newTag: sha-ab8f1b33ac22ee73b45e9090fd79ee60ec28b75b
+    newTag: sha-82fbab7a43791950817da55ff8d460cf5954bdd5
