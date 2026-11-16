@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check shell and k6 JavaScript syntax
         run: |
-          bash -n setup_vm.sh init_airflow.sh kubernetes_start.sh kubernetes_stop.sh argocd/bootstrap.sh argocd/bootstrap-prod.sh argocd/configure-sync.sh
+          bash -n setup_vm.sh init_airflow.sh check_airflow_state.sh kubernetes_start.sh kubernetes_stop.sh argocd/bootstrap.sh argocd/bootstrap-prod.sh argocd/configure-sync.sh
           node --input-type=module --check < performance/k6/job-search.js
       - uses: azure/setup-kubectl@v4
         with:
