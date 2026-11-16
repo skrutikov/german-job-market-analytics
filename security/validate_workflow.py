@@ -1,8 +1,4 @@
-"""Static safety/coverage checks for our Trivy GitHub Actions workflow.
-
-Run with: python security/validate_workflow.py
-Requires PyYAML (already installed in the Kubernetes manifest CI job).
-"""
+"""Validate the Trivy CI workflow's coverage and security policy."""
 
 from pathlib import Path
 
@@ -10,34 +6,37 @@ import yaml
 
 
 def validate() -> None:
-    workflow = yaml.load(
-        Path(".github/workflows/trivy.yml").read_text(encoding="utf-8"),
-        Loader=yaml.BaseLoader,  # Preserve the "on:" GitHub Actions key.
-    )
+    path = Path(".github/workflows/trivy.yml")
+    workflow = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
 
-    assert set(workflow["on"]) == {"pull_request", "push", "schedule", "workflow_dispatch"}
+    expected_events = {"pull_request", "push", "schedule", "workflow_dispatch"}
+    assert set(workflow["on"]) == expected_events
     assert workflow["permissions"]["contents"] == "read"
     assert workflow["permissions"]["security-events"] == "write"
 
     jobs = workflow["jobs"]
     assert set(jobs) == {"repository", "container_images"}
-    assert {entry["component"]: entry["dockerfile"] for entry in
-            jobs["container_images"]["strategy"]["matrix"]["include"]} == {
-                "application": "Dockerfile",
-                "airflow": "airflow/Dockerfile",
-            }
+    containers = jobs["container_images"]["strategy"]["matrix"]["include"]
+    components = {entry["component"]: entry["dockerfile"] for entry in containers}
+    assert components == {
+        "application": "Dockerfile",
+        "airflow": "airflow/Dockerfile",
+    }
 
     for job in jobs.values():
         steps = job["steps"]
-        trivy = [
-            step for step in steps
+        scans = [
+            step
+            for step in steps
             if step.get("uses", "").startswith("aquasecurity/trivy-action@")
         ]
-        assert len(trivy) == 2
-        assert all(step["uses"] == "aquasecurity/trivy-action@v0.36.0"
-                   for step in trivy)
-        assert all(step["with"]["version"] == "v0.74.0" for step in trivy)
-        report, gate = trivy
+        assert len(scans) == 2
+        assert all(
+            scan["uses"] == "aquasecurity/trivy-action@v0.36.0"
+            for scan in scans
+        )
+        assert all(scan["with"]["version"] == "v0.74.0" for scan in scans)
+        report, gate = scans
 
         assert report["with"]["format"] == "sarif"
         assert report["with"]["exit-code"] == "0"
@@ -48,20 +47,14 @@ def validate() -> None:
         assert gate["with"]["ignore-unfixed"] == "true"
         assert not any(step.get("continue-on-error") == "true" for step in steps)
 
-        assert any(
-            step.get("uses") == "github/codeql-action/upload-sarif@v4"
-            for step in steps
-        )
-        assert any(
-            step.get("uses") == "actions/upload-artifact@v4"
-            for step in steps
-        )
+        used_actions = {step.get("uses") for step in steps}
+        assert "github/codeql-action/upload-sarif@v4" in used_actions
+        assert "actions/upload-artifact@v4" in used_actions
 
-    repository = jobs["repository"]["steps"]
-    assert repository[1]["with"]["scanners"] == "vuln,secret,misconfig"
-    image = jobs["container_images"]["steps"]
-    assert image[2]["with"]["scanners"] == "vuln"
-    assert Path(".dockerignore").exists()
+    repo_steps = jobs["repository"]["steps"]
+    assert repo_steps[1]["with"]["scanners"] == "vuln,secret,misconfig"
+    image_steps = jobs["container_images"]["steps"]
+    assert image_steps[2]["with"]["scanners"] == "vuln"
     assert ".git" in Path(".dockerignore").read_text()
     print("Trivy CI coverage and gating validated.")
 
