@@ -216,20 +216,38 @@ cd ~/german-job-market-analytics
 bash init_airflow.sh
 ```
 
-The script waits for the Airflow Deployment to be ready, prints its version
-and registered DAGs, unpauses `job_market_etl`, triggers **one new manual run**,
-and displays up to five recent DAG runs. It does **not wait** for the ETL to
-finish: a new run will initially show as `queued` or `running`. Re-run
-`airflow dags list-runs` or use the Airflow UI later to confirm `success`.
+The script checks the Airflow deployment and DAG, enables scheduling if
+the DAG was paused, and **checks for any queued/running ETL run before
+triggering another**. If a run is already queued or running, it skips the
+manual trigger. If the DAG was initially paused, it unpauses scheduling but
+does **not** also create a manual run: the scheduler may immediately create
+a scheduled run itself. This avoids the double initialization we saw in prod.
 
-**Each execution of `init_airflow.sh` triggers another run.** Do not rerun
-it just to check progress, and do not overlap a manual ETL with another active
-ETL job. To check current runs without triggering again:
+If the DAG was already unpaused and has no active runs, `init_airflow.sh`
+triggers one manual run. The script checks the complete DAG-run state list
+using Airflow 3.4's structured JSON output (rather than only the five most
+recent rows). If a status command or JSON parsing fails, it **refuses to
+trigger**. This is a best-effort safeguard, not an atomic lock against a
+second operator triggering a run at exactly the same moment.
+
+For a **read-only status check** that never triggers another ETL:
 
 ```bash
-sudo k3s kubectl -n dev exec deployment/airflow -- \
+bash check_airflow_state.sh dev
+bash check_airflow_state.sh prod
+```
+
+The status script prints the five latest DAG runs for the selected namespace;
+the default is `dev`. These are equivalent to:
+
+```bash
+sudo k3s kubectl -n prod exec deployment/airflow -- \
   airflow dags list-runs job_market_etl --limit 5
 ```
+
+Don't rerun `init_airflow.sh` just to check progress. After the active run
+finishes, a subsequent invocation can trigger another ETL. These scripts
+don't detect independently launched `data-update` Kubernetes Jobs.
 
 Airflow's DAG schedules the daily ETL at **06:00**, writing to PostgreSQL and Elasticsearch and publishing ETL metrics to Pushgateway. Airflow's `/opt/airflow/data` and the manual ETL runner's `/app/data` share a PVC.
 
