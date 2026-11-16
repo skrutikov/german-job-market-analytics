@@ -13,3 +13,6 @@ COPY --chown=airflow:root src /opt/airflow/src
 COPY --chown=airflow:root airflow/dags /opt/airflow/dags
 
 RUN pip install --no-cache-dir --no-deps -e /opt/airflow
+
+# Explicitly enforce the non-root runtime user provided by the base image.
+USER airflow
