@@ -28,7 +28,9 @@ credentials in source-controlled files or image build arguments.
 [Security workflow](../.github/workflows/trivy.yml) runs automatically:
 
 - On pull requests targeting `main` (including proposed security changes)
-- On pushes to `main`; while under development, also on `trivy-scanning`
+- On pushes to `main` through the existing Kubernetes image pipeline
+  (as a **required reusable workflow** before GHCR publication);
+  while under development, also directly on `trivy-scanning`
 - Weekly on Monday at 06:00 UTC, to catch newly disclosed vulnerabilities
   even when no code has changed
 - Manually through **GitHub → Actions → Trivy security scanning → Run workflow**
@@ -84,11 +86,12 @@ Use the report to distinguish:
 - **Secrets**: revoke/rotate any exposed live credential, remove it from
   Git and its history as appropriate; ignoring the detection is not remediation.
 
-There are **two distinct image supply chains**: this workflow builds images
-from the reviewed commit for scanning, while
-[the Kubernetes pipeline](../.github/workflows/kubernetes.yml) publishes
-`main` images to GHCR. Because base images and dependency ranges are mutable,
-the locally scanned rebuild may differ from the published image. Pinning image
+For `main`, the [Kubernetes pipeline](../.github/workflows/kubernetes.yml)
+**waits for all Trivy jobs to pass** before publishing images to GHCR. This
+prevents knowingly publishing a new release after a failed security gate.
+The scanner builds images from the reviewed commit, while the separate publish
+job rebuilds them; base images and dependency ranges may still change between
+those builds, so these are not necessarily identical binaries. Pinning image
 digests and exporting immutable release artifacts is a useful future
 hardening step.
 

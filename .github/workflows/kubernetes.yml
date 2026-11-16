@@ -84,10 +84,19 @@ jobs:
             python kubernetes/validate.py "/tmp/job-market-$environment.yaml" "$environment"
           done
 
+  security:
+    # Scan the exact source ref before releasing images to GHCR.
+    if: github.event_name == 'push' && github.ref_name == 'main'
+    needs: validate
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/trivy.yml
+
   publish:
     # Monitoring-only branches need CI, not overwriting the dev image tag.
     if: github.event_name == 'push' && github.ref_name == 'main'
-    needs: validate
+    needs: [validate, security]
     runs-on: ubuntu-latest
     permissions:
       contents: read

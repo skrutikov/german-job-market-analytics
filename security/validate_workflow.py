@@ -9,7 +9,13 @@ def validate() -> None:
     path = Path(".github/workflows/trivy.yml")
     workflow = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
 
-    expected_events = {"pull_request", "push", "schedule", "workflow_dispatch"}
+    expected_events = {
+        "workflow_call",
+        "pull_request",
+        "push",
+        "schedule",
+        "workflow_dispatch",
+    }
     assert set(workflow["on"]) == expected_events
     assert workflow["permissions"]["contents"] == "read"
     assert workflow["permissions"]["security-events"] == "write"
@@ -56,7 +62,17 @@ def validate() -> None:
     image_steps = jobs["container_images"]["steps"]
     assert image_steps[2]["with"]["scanners"] == "vuln"
     assert ".git" in Path(".dockerignore").read_text()
-    print("Trivy CI coverage and gating validated.")
+
+    pipeline = yaml.load(
+        Path(".github/workflows/kubernetes.yml").read_text(),
+        Loader=yaml.BaseLoader,
+    )
+    publish = pipeline["jobs"]["publish"]
+    release_scan = pipeline["jobs"]["security"]
+    assert "security" in publish["needs"]
+    assert release_scan["uses"] == "./.github/workflows/trivy.yml"
+    assert release_scan["permissions"]["security-events"] == "write"
+    print("Trivy CI coverage and release gating validated.")
 
 
 if __name__ == "__main__":
