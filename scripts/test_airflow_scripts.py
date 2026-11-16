@@ -37,14 +37,14 @@ elif "airflow" in args:
                     "dag_id": "job_market_etl",
                     "is_paused": os.environ.get("MOCK_PAUSED") == "1",
                 }]))
-        elif command[1] == "list":
+        else:
             print("job_market_etl")
-        elif command[1] == "list-runs":
-            if "--output" in command:
-                state = os.environ.get("MOCK_ACTIVE", "")
-                print(json.dumps([{"state": state}] if state else []))
-            else:
-                print("job_market_etl | sample_run | success")
+    elif command[:2] == ["dags", "list-runs"]:
+        if "--output" in command:
+            state = os.environ.get("MOCK_ACTIVE", "")
+            print(json.dumps([{"state": state}] if state else []))
+        else:
+            print("job_market_etl | sample_run | success")
     elif command[:2] == ["dags", "unpause"]:
         print("dag unpaused")
     elif command[:2] == ["dags", "trigger"]:
@@ -67,7 +67,7 @@ class AirflowScriptTests(unittest.TestCase):
         sudo.write_text(MOCK_SUDO)
         sudo.chmod(0o755)
         k3s = self.bin_dir / "k3s"
-        k3s.write_text("#!/bin/sh\\nexit 0\\n")
+        k3s.write_text("#!/bin/sh\nexit 0\n")
         k3s.chmod(0o755)
         self.log = self.root / "sudo.log"
         self.environment = os.environ.copy()
