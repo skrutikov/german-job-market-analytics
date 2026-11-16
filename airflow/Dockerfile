@@ -1,4 +1,5 @@
-FROM apache/airflow:3.3.0
+# Security maintenance: 3.4.0 supersedes the older 3.3.0 runtime.
+FROM apache/airflow:3.4.0
 
 COPY requirements.txt /requirements.txt
 COPY airflow/requirements.txt /airflow-requirements.txt
@@ -12,3 +13,6 @@ COPY --chown=airflow:root src /opt/airflow/src
 COPY --chown=airflow:root airflow/dags /opt/airflow/dags
 
 RUN pip install --no-cache-dir --no-deps -e /opt/airflow
+
+# Explicitly enforce the non-root runtime user provided by the base image.
+USER airflow

@@ -1,6 +1,6 @@
 # Kubernetes application deployment
 
-Kustomize deploys Job Market Analytics to the single-node k3s cluster provisioned by [Terraform and Ansible](../infrastructure/README.md). The Docker Compose deployment is unchanged. For GitOps synchronization, see the [Argo CD guide](../argocd/README.md). For Prometheus container monitoring and k6 load tests, see the [performance guide](../performance/README.md).
+Kustomize deploys Job Market Analytics to the single-node k3s cluster provisioned by [Terraform and Ansible](../infrastructure/README.md). The Docker Compose deployment is unchanged. For GitOps synchronization, see the [Argo CD guide](../argocd/README.md). For Prometheus container monitoring and k6 load tests, see the [performance guide](../performance/README.md). For repository and container vulnerability scanning in CI, see the [Trivy security guide](../security/README.md).
 
 ## Components
 
@@ -29,8 +29,16 @@ The overlays in `kubernetes/overlays/dev` and `kubernetes/overlays/prod` isolate
 
 | Branch | Application image | Airflow image |
 |---|---|---|
-| `gitops` | `ghcr.io/skrutikov/german-job-market-analytics:dev` | `ghcr.io/skrutikov/german-job-market-analytics-airflow:dev` |
-| `main` | `ghcr.io/skrutikov/german-job-market-analytics:main` | `ghcr.io/skrutikov/german-job-market-analytics-airflow:main` |
+| `main` (dev and prod overlays) | `ghcr.io/skrutikov/german-job-market-analytics:main` | `ghcr.io/skrutikov/german-job-market-analytics-airflow:main` |
+
+**Both** overlays intentionally use the images published from `main`. The
+`dev` and `prod` names refer to Kubernetes namespaces, not to GHCR image
+tags. In particular, a fresh dev deployment now fetches the security-scanned
+Airflow 3.4.0 image rather than the legacy `:dev` image. The publish job runs
+only after successful Trivy security scans. The `:main` tag is mutable;
+a fresh VM pulls the latest release, while a running Pod may retain a cached
+image until a rollout. For strict reproducibility, pin a tested immutable image
+digest or `sha-<commit>` tag in a future release.
 
 Wait for the **publish** workflow to finish before deploying. GitHub may initially make new packages private. Either change their visibility to public or configure an authorized GHCR `imagePullSecret` in the target namespace before applying resources. For private packages, a token with `read:packages` is required. Credentials must never be committed to the repository.
 
@@ -171,7 +179,7 @@ Replace `JOB_NAME` with the created Job name. Avoid overlapping manual updates w
 
 ## 6. Production overlay and resource limits
 
-The `prod` namespace uses `:main` images. Once the main-branch images have been published and its registry access is ready:
+The `prod` namespace also uses `:main` images. Once the main-branch images have been published and its registry access is ready:
 
 ```bash
 sudo bash kubernetes/deploy.sh prod
