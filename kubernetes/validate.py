@@ -3,6 +3,7 @@
 Usage: python kubernetes/validate.py RENDERED_YAML dev|prod
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -51,6 +52,11 @@ def validate(path: Path, namespace: str) -> None:
 
     # ClusterRoles and ClusterRoleBindings are deliberately cluster-scoped.
     # Every other resource must remain in the selected environment namespace.
+    application_image_tags = set()
+    ghcr_images = {
+        "ghcr.io/skrutikov/german-job-market-analytics",
+        "ghcr.io/skrutikov/german-job-market-analytics-airflow",
+    }
     for manifest in manifests:
         if manifest["kind"] in {"ClusterRole", "ClusterRoleBinding"}:
             assert manifest["metadata"].get("namespace") is None, manifest
@@ -58,11 +64,23 @@ def validate(path: Path, namespace: str) -> None:
             assert manifest["metadata"].get("namespace") == namespace, manifest
         assert manifest["kind"] != "Secret", "Credentials must not be committed"
         if manifest["kind"] == "Deployment":
-            for container in manifest["spec"]["template"]["spec"]["containers"]:
-                image = container["image"]
-                if image.startswith("ghcr.io/skrutikov/"):
-                    # Both namespaces consume security-scanned images from main.
-                    assert image.endswith(":main"), image
+            containers = manifest["spec"]["template"]["spec"]["containers"]
+        elif manifest["kind"] == "CronJob":
+            containers = manifest["spec"]["jobTemplate"]["spec"]["template"]["spec"][
+                "containers"
+            ]
+        else:
+            containers = []
+        for container in containers:
+            image = container["image"]
+            if image.startswith("ghcr.io/skrutikov/"):
+                name, tag = image.rsplit(":", 1)
+                assert name in ghcr_images, image
+                assert re.fullmatch(r"sha-[0-9a-f]{40}", tag), image
+                application_image_tags.add(tag)
+
+    # The backend, frontend, Airflow and optional ETL Job are one tested release.
+    assert len(application_image_tags) == 1, application_image_tags
 
     # The Prometheus account is allowed read-only access to node cAdvisor.
     prometheus = objects["Deployment", "prometheus"]
