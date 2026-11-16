@@ -75,7 +75,7 @@ The new exporter adds one small Pod. Container metrics are gathered from Kuberne
 
    All should return **1**. Then check `container_memory_working_set_bytes{namespace="dev",container="backend"}` and `kube_pod_container_status_restarts_total{namespace="dev"}`. If the k6 script generates requests but the graph stays empty, examine **Status → Targets** in Prometheus before modifying any manifests. The first container CPU datapoints require more than one scrape.
 
-**Safety:** Argo CD is set to auto-sync and self-heal with pruning disabled. Switching its tracked branch may roll out Prometheus/Grafana because their generated ConfigMaps change. The old metrics dashboard is preserved, and state is held on persistent volumes.
+**Safety:** Argo CD auto-syncs and self-heals with automatic pruning enabled; persistent-volume claims have resource-specific pruning protection. Switching its tracked branch may roll out Prometheus/Grafana because their generated ConfigMaps change. The old metrics dashboard is preserved, and state is held on persistent volumes.
 
 ## Run k6 from the local machine
 
@@ -134,3 +134,5 @@ Check `sudo k3s kubectl -n argocd get application job-market-dev`. The local Git
 4. Consider immutable image digests for GitOps releases and k6 output integration after the basic observations are reliable.
 
 Sources: [k6 scenarios](https://grafana.com/docs/k6/latest/using-k6/scenarios/), [k6 thresholds](https://grafana.com/docs/k6/latest/using-k6/thresholds/), [Kubernetes metrics endpoints](https://kubernetes.io/docs/concepts/cluster-administration/system-metrics/), [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics).
+
+The next phase now lives in [SLOs and alerting](../slo/README.md), including the latency/success targets and alert validation workflow.
