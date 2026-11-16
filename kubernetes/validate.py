@@ -61,8 +61,8 @@ def validate(path: Path, namespace: str) -> None:
             for container in manifest["spec"]["template"]["spec"]["containers"]:
                 image = container["image"]
                 if image.startswith("ghcr.io/skrutikov/"):
-                    expected_tag = "dev" if namespace == "dev" else "main"
-                    assert image.endswith(":" + expected_tag), image
+                    # Both namespaces consume security-scanned images from main.
+                    assert image.endswith(":main"), image
 
     # The Prometheus account is allowed read-only access to node cAdvisor.
     prometheus = objects["Deployment", "prometheus"]
