@@ -1,4 +1,5 @@
-FROM apache/airflow:3.3.0
+# Security maintenance: 3.4.0 supersedes the older 3.3.0 runtime.
+FROM apache/airflow:3.4.0
 
 COPY requirements.txt /requirements.txt
 COPY airflow/requirements.txt /airflow-requirements.txt
