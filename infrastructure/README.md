@@ -13,7 +13,7 @@ Run Terraform and Ansible from the **local machine**, using a Linux-compatible c
 - **One-time Proxmox preparation:** download the Ubuntu Cloud Image, verify the NAT VNet, create the API token, and grant it the shared storage and VNet permissions (Section 2). These actions require authorized Proxmox administration.
 - **Before creating or recreating a VM:** verify and, if necessary, grant that specific VM ID's `/vms/VM_ID` ACL. On this host, destroying a VM has removed its VM-specific ACL; the shared storage/VNet permissions remain (Section 2).
 - **VM + k3s deployment:** from the local machine, configure `infrastructure/terraform/terraform.tfvars`, trust the Proxmox CA and run `./deploy.sh` (Section 3). The script plans/applies Terraform **only after confirmation**, waits for SSH and Cloud-Init, then invokes Ansible to install/configure k3s and verify the node. The restricted `jumpuser` SSH account must already be configured on Proxmox (Section 2).
-- **After deployment:** use the optional SSH alias for interactive access (Section 4), or rerun the Ansible playbook manually for troubleshooting (Section 5). **The application itself is not deployed by `deploy.sh`.**
+- **After deployment:** use the optional SSH alias for interactive access (Section 4), or rerun the Ansible playbook manually for troubleshooting (Section 5). **The application itself is not deployed by `deploy.sh`.** On the new Ubuntu VM, run [`setup_vm.sh`](../kubernetes/README.md#quick-start-setup_vmsh-recommended-for-a-fresh-vm) to clone the repository, configure Elasticsearch, deploy the application and bootstrap Argo CD, then run [`init_airflow.sh`](../kubernetes/README.md#quick-start-init_airflowsh) to trigger the first ETL.
 
 This guide assumes a Proxmox host is already available; it does not install Proxmox itself. Follow the prerequisites and procedures below before deploying. Never assume the example VM ID, private IP, subnet, VNet or permissions are available on another host. Keep the Terraform state for repeat runs.
 
@@ -163,6 +163,47 @@ The essential distinction:
 - **Per-VM provisioning/reprovisioning:** check `/vms/VM_ID` and grant `PVEVMAdmin` there when missing (Section B). Recheck after `destroy.sh`, because VM deletion can remove this ACL.
 
 If `VM.Allocate` is still absent, check the underlying owner permissions with `pveum user permissions root1@pve --path /vms/VM_ID` (substitute the ID). **HTTP 401** indicates an authentication issue (invalid token/secret), while **HTTP 403** generally indicates insufficient authorization.
+
+##### After recreation: verify and refresh the VM's SSH host key
+
+A replacement Ubuntu VM generates **new SSH host keys**, even if its VM ID
+and private IP are unchanged. The first `./deploy.sh` attempt may therefore
+print `WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!` and retry SSH
+connections. This is expected after a deliberate rebuild, **but verify the
+new key before trusting it**.
+
+1. Stop the SSH retry loop (Ctrl+C). Terraform has already created the VM;
+   you do **not** need to destroy or recreate it again.
+2. On the new VM's **trusted Proxmox web console**, display its ED25519 SSH
+   host-key fingerprint:
+
+   ```bash
+   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+   ```
+
+   Compare the complete `SHA256:...` fingerprint against the one SSH
+   reported when connecting to the recreated VM. If they differ, investigate
+   before proceeding; do not just disable SSH host-key checking.
+3. **Only after the fingerprints match**, on the **local machine** as the
+   same user that runs `./deploy.sh`, remove the obsolete entry:
+
+   ```bash
+   ssh-keygen -f "$HOME/.ssh/known_hosts" -R 10.10.10.20
+   ```
+
+   Substitute the current `VM_IP` for the example `10.10.10.20`.
+   In particular, if running from a `root@` shell, this is
+   `/root/.ssh/known_hosts`, not another user's SSH key database.
+4. Run `./deploy.sh` again from the repository root. Terraform reuses the
+   already-managed VM and the script continues with SSH, Cloud-Init, and
+   Ansible. When prompted to trust the new fingerprint, accept it **only if
+   it matches the one independently verified in the VM console**.
+
+`No route to host` or `Connection refused` during the first attempts can
+simply mean the new VM is booting; persistent connection failures after the
+host-key update may indicate separate network, SSH server, or jump-host issues.
+
+
 
 ### Create the SSH jump account
 

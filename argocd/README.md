@@ -4,6 +4,10 @@ Argo CD reconciles the existing `dev` Kubernetes application from `kubernetes/ov
 
 ## Bootstrap on the Proxmox VM
 
+For a **fresh Ubuntu VM**, the [`setup_vm.sh` bootstrap](../kubernetes/README.md#quick-start-setup_vmsh-recommended-for-a-fresh-vm)
+does the application deployment and Argo CD bootstrap in one command.
+The following commands remain the manual alternative.
+
 First deploy and verify the application using [the Kubernetes guide](../kubernetes/README.md). Connect to the **Proxmox VM** through the SSH jump account on the **Proxmox host**. On the VM:
 
 ```bash

@@ -46,7 +46,43 @@ GitHub Actions does **not** deploy automatically to the private Proxmox VM.
 
 ## 2. Prepare the Proxmox VM
 
-Run these commands **on the Proxmox VM**, reached through the restricted SSH jump account on the Proxmox host:
+### Quick start: `setup_vm.sh` (recommended for a fresh VM)
+
+After `./deploy.sh` on the **local machine** has provisioned the VM and
+installed k3s with Ansible, SSH into the **Ubuntu VM as the regular user**
+(not the Proxmox host and not root). Since the repository does not exist on a
+fresh VM yet, download just the bootstrap script from `main`:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y curl
+curl -fsSLo /tmp/job-market-setup-vm.sh \
+  https://raw.githubusercontent.com/skrutikov/german-job-market-analytics/main/setup_vm.sh
+bash /tmp/job-market-setup-vm.sh
+```
+
+Inspect the downloaded script before executing it if desired. It checks k3s,
+installs `git` and `openssl`, clones or fast-forward-updates the `main`
+checkout at `~/german-job-market-analytics`, persists Elasticsearch's
+`vm.max_map_count`, runs `kubernetes/deploy.sh dev`, bootstraps Argo CD
+tracking `main`, and displays node/Pod/Application status. It does
+**not** modify the Proxmox VM or reinstall k3s.
+
+The script is safe to rerun on the same Git branch: it will not delete the
+repository or overwrite tracked local edits, and existing Kubernetes Secrets
+and PVCs are retained. Re-running the deployment may still reconcile/restart
+workloads as needed. It rejects an unrelated Git origin or existing
+non-repository directory. A separate `init_airflow.sh` command starts the
+first ETL; it is **not** triggered automatically by VM setup.
+
+For a new lab environment, once this completes, skip directly to
+[Section 4 (local access)](#4-access-from-the-local-machine-one-background-ssh-tunnel)
+and [Section 5 (ETL)](#5-run-etl).
+
+### Manual equivalent (for troubleshooting)
+
+Run these commands **on the Proxmox VM**, reached through the restricted SSH
+jump account on the Proxmox host:
 
 ```bash
 sudo k3s kubectl get nodes
@@ -163,6 +199,30 @@ The manual forwarding processes must remain running. This fallback is separate f
 The optional Traefik Ingress hosts (`job-market-dev.test` and `job-market.test`) are example names, not public DNS records; they require suitable routing and DNS. After installing Argo CD, the local access script also provides its HTTPS UI; see the [Argo CD access guide](../argocd/README.md#access-from-the-local-machine).
 
 ## 5. Run ETL
+
+### Quick start: `init_airflow.sh`
+
+On the **Ubuntu VM**, after `setup_vm.sh` or manual deployment has succeeded:
+
+```bash
+cd ~/german-job-market-analytics
+bash init_airflow.sh
+```
+
+The script waits for the Airflow Deployment to be ready, prints its version
+and registered DAGs, unpauses `job_market_etl`, triggers **one new manual run**,
+and displays up to five recent DAG runs. It does **not wait** for the ETL to
+finish: a new run will initially show as `queued` or `running`. Re-run
+`airflow dags list-runs` or use the Airflow UI later to confirm `success`.
+
+**Each execution of `init_airflow.sh` triggers another run.** Do not rerun
+it just to check progress, and do not overlap a manual ETL with another active
+ETL job. To check current runs without triggering again:
+
+```bash
+sudo k3s kubectl -n dev exec deployment/airflow -- \
+  airflow dags list-runs job_market_etl --limit 5
+```
 
 Airflow's DAG schedules the daily ETL at **06:00**, writing to PostgreSQL and Elasticsearch and publishing ETL metrics to Pushgateway. Airflow's `/opt/airflow/data` and the manual ETL runner's `/app/data` share a PVC.
 
