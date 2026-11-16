@@ -148,3 +148,18 @@ tests:
               summary: "Prometheus has no job-market backend scrape target"
               description: "The backend scrape target has disappeared; check Prometheus configuration and service discovery."
               runbook: "slo/README.md#troubleshooting"
+
+  - name: disposable Pushgateway signal exercises alert routing
+    interval: 1m
+    input_series:
+      - series: 'job_market_alert_test{job="slo-alert-test"}'
+        values: '1+0x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AlertingPipelineTest
+        exp_alerts:
+          - exp_labels: {severity: info, service: alerting, job: slo-alert-test}
+            exp_annotations:
+              summary: "Alerting pipeline test is active"
+              description: "A disposable Pushgateway metric was set to 1. Delete its Pushgateway group to clear this test alert."
+              runbook: "slo/README.md#safe-live-alert-test"

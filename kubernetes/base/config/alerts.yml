@@ -95,6 +95,18 @@ groups:
   - name: monitoring_health
     interval: 1m
     rules:
+      # Operator-controlled canary: pushing job_market_alert_test=1 to
+      # Pushgateway exercises Prometheus -> Alertmanager without an outage.
+      - alert: AlertingPipelineTest
+        expr: job_market_alert_test == 1
+        for: 1m
+        labels:
+          severity: info
+          service: alerting
+        annotations:
+          summary: "Alerting pipeline test is active"
+          description: "A disposable Pushgateway metric was set to 1. Delete its Pushgateway group to clear this test alert."
+          runbook: "slo/README.md#safe-live-alert-test"
       - alert: BackendMetricsUnavailable
         expr: up{job="job-market-backend"} == 0
         for: 3m
