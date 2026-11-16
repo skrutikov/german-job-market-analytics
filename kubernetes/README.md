@@ -23,26 +23,33 @@ The overlays in `kubernetes/overlays/dev` and `kubernetes/overlays/prod` isolate
 
 **Security and scope:** The current Airflow configuration uses `airflow standalone` (SQLite metadata database), intended for development and demonstration, not production-grade Airflow. Elasticsearch's security is disabled for its private cluster Service, as in Docker Compose. The example Ingress is plain HTTP. Do **not** expose this setup to the public internet without authentication, TLS and network restrictions. Single-node k3s and local-path storage are not highly available.
 
-## 1. Publish container images
+## 1. CI images, automatic dev deployment and production promotion
 
-[GitHub Actions](../.github/workflows/kubernetes.yml) validates both Kustomize overlays and builds/pushes the application and Airflow Docker images to GitHub Container Registry (GHCR):
+[GitHub Actions](../.github/workflows/kubernetes.yml) validates both
+Kustomize overlays, scans source and containers with Trivy, and builds/publishes
+both application and Airflow images to GHCR.
 
-| Branch | Application image | Airflow image |
-|---|---|---|
-| `main` (dev and prod overlays) | `ghcr.io/skrutikov/german-job-market-analytics:main` | `ghcr.io/skrutikov/german-job-market-analytics-airflow:main` |
+Each successful `main` publication creates an **immutable**
+`sha-<full-main-commit>` tag for both images. The
+`update_dev_gitops` job automatically updates the dev overlay in `main`;
+Argo CD watches `main` and deploys the new dev version. Production
+**never tracks `main` directly**: after manual and (when configured) reviewer
+approval, the [promotion workflow](../.github/workflows/promote-production.yml)
+updates a separate `production` branch that prod Argo CD watches.
 
-**Both** overlays intentionally use the images published from `main`. The
-`dev` and `prod` names refer to Kubernetes namespaces, not to GHCR image
-tags. In particular, a fresh dev deployment now fetches the security-scanned
-Airflow 3.4.0 image rather than the legacy `:dev` image. The publish job runs
-only after successful Trivy security scans. The `:main` tag is mutable;
-a fresh VM pulls the latest release, while a running Pod may retain a cached
-image until a rollout. For strict reproducibility, pin a tested immutable image
-digest or `sha-<commit>` tag in a future release.
+Both environments use the same two image repositories, but **can run
+different immutable image versions**:
 
-Wait for the **publish** workflow to finish before deploying. GitHub may initially make new packages private. Either change their visibility to public or configure an authorized GHCR `imagePullSecret` in the target namespace before applying resources. For private packages, a token with `read:packages` is required. Credentials must never be committed to the repository.
+- Application: `ghcr.io/skrutikov/german-job-market-analytics:sha-<commit>`
+- Airflow: `ghcr.io/skrutikov/german-job-market-analytics-airflow:sha-<commit>`
 
-GitHub Actions does **not** deploy automatically to the private Proxmox VM.
+For step-by-step reviewer setup, dev verification, first production bootstrap,
+and recovery instructions, see the [dev-to-prod promotion runbook](../docs/dev-to-prod-promotion.md).
+
+GitHub Actions does **not** SSH into the private Proxmox VM. GHCR packages must
+be accessible to k3s (public or authenticated via a namespace imagePullSecret).
+Do not commit credentials. Wait for `publish` and `update_dev_gitops` to
+complete before verifying or promoting a release.
 
 ## 2. Prepare the Proxmox VM
 
@@ -237,21 +244,37 @@ sudo k3s kubectl -n dev logs job/JOB_NAME --follow
 
 Replace `JOB_NAME` with the created Job name. Avoid overlapping manual updates with an Airflow ETL run, since both modify the same database and search index. The scheduled DAG can be managed from Airflow's UI.
 
-## 6. Production overlay and resource limits
+## 6. Production deployment and resource limits
 
-The `prod` namespace also uses `:main` images. Once the main-branch images have been published and its registry access is ready:
+The production overlay is pinned to the **approved** immutable image tag
+on the separate `production` Git branch. It should not be deployed directly
+from `main`: that bypasses the approved production configuration.
+
+After the first production promotion completes in GitHub Actions, on the
+**Ubuntu VM** (normal account, repository on `main`):
 
 ```bash
-sudo bash kubernetes/deploy.sh prod
+cd ~/german-job-market-analytics
+git switch main
+git pull --ff-only
+bash argocd/bootstrap-prod.sh
 ```
 
-A VM with **4 vCPUs, 16 GiB RAM and a 30 GiB disk** may not have enough capacity for two complete stacks simultaneously. Prefer **one environment at a time** on this node, or increase capacity. A `prod` namespace does not make this setup production-grade.
+The bootstrap creates isolated prod Secrets, PVCs and Deployments, then
+registers the prod Argo CD Application. Later approved promotions automatically
+sync through Argo CD. See the [promotion guide](../docs/dev-to-prod-promotion.md).
 
-For manifest previews:
+A VM with **4 vCPUs, 16 GiB RAM and a 30 GiB disk** may support both stacks
+when idle, but Airflow/Elasticsearch and image layers can consume substantial
+resources. Monitor `df -h /`, `sudo k3s kubectl top nodes`, and Pod memory,
+and do not overlap both ETL pipelines until proven safe.
+
+To inspect rendered configurations:
 
 ```bash
 sudo k3s kubectl kustomize kubernetes/overlays/dev
 sudo k3s kubectl kustomize kubernetes/overlays/prod
 ```
 
-After changing images, redeploy and restart workloads if necessary; Kubernetes does not automatically restart pods when a moving GHCR tag is republished. For reproducible releases, prefer immutable `sha-<commit>` image tags. Back up PostgreSQL, Airflow state, ETL files and relevant credentials; local-path PVCs are not a disaster-recovery solution.
+Keep backups of PostgreSQL, Airflow state, ETL files and credentials:
+local-path PVCs are **not** a disaster-recovery solution.

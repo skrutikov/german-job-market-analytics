@@ -1,6 +1,6 @@
 # Argo CD GitOps deployment
 
-Argo CD reconciles the existing `dev` Kubernetes application from `kubernetes/overlays/dev`. It runs in its own `argocd` namespace. This project uses the pinned official non-HA Argo CD **v3.6.1** installer, appropriate for a small single-node demonstration cluster. Neither the `prod` application nor the Proxmox infrastructure is managed by Argo CD.
+Argo CD reconciles `dev` from `main` and, **after explicit release approval and a one-time bootstrap**, `prod` from the independent `production` Git branch. Both Applications live in the `argocd` namespace. This project uses the pinned non-HA Argo CD **v3.6.1** installer, appropriate for a small single-node demonstration cluster. Proxmox infrastructure remains managed by Terraform and Ansible. See the [promotion guide](../docs/dev-to-prod-promotion.md).
 
 ## Bootstrap on the Proxmox VM
 
@@ -18,6 +18,27 @@ sudo ./argocd/bootstrap.sh main
 ```
 
 This installs Argo CD into the `argocd` namespace, waits for its components to be ready, and registers the existing `job-market-dev` Application. It requires cluster-admin privileges, access to GitHub and sufficient VM resources. It does **not** create `prod`, reinstall the `dev` application or regenerate its passwords.
+
+### Approved production bootstrap
+
+Production **must not** be deployed from the `main` overlay, because
+production tracks the separately approved `production` Git branch.
+After a successful [production promotion](../docs/dev-to-prod-promotion.md)
+creates that branch, on the **Ubuntu VM** as the normal account:
+
+```bash
+cd ~/german-job-market-analytics
+git switch main
+git pull --ff-only
+bash argocd/bootstrap-prod.sh
+```
+
+This fetches the approved branch into a temporary checkout, runs
+`kubernetes/deploy.sh prod`, applies PVC protection, and creates
+`job-market-prod`. It does not change `job-market-dev`.
+Subsequent approved promotions are automatically synchronized to prod by
+Argo CD. Configure GitHub's `production` environment required reviewers
+and protect the `production` Git branch **before** relying on the gate.
 
 ### Automatic pruning with persistent-storage protection
 
@@ -87,7 +108,12 @@ In the Argo CD web UI, inspect the `job-market-dev` resource tree and its **Sync
 
 To test reconciliation, commit a small, safe, non-secret change under `kubernetes/overlays/dev` on the branch that the Application tracks. Argo CD periodically detects and applies the desired manifests. Do not manually run `kubectl apply -k` on those resources once Argo CD is managing them.
 
-**Container images are a separate step.** GitHub Actions publishes `:main` images for the `main` branch, but Argo CD does not detect when a mutable image tag is simply republished. For a new image release, update an overlay's `newTag` to the already-published immutable `sha-<commit>` tag and push that manifest change. We can automate that image-tag update later.
+**Image releases are now GitOps-driven.** After GitHub Actions successfully
+builds, scans, and publishes both immutable `sha-<commit>` images, its
+`update_dev_gitops` job updates only the dev overlay on `main`. Argo CD
+then auto-deploys dev. A separate, manually approved GitHub workflow updates
+only the `production` Git branch, triggering production Argo CD. See the
+[promotion runbook](../docs/dev-to-prod-promotion.md).
 
 ## Returning to main after feature-branch testing
 
@@ -107,3 +133,4 @@ The update checks PVC protections again and restores the current GitOps sync pol
 - The one-node non-HA setup is not high availability. Watch VM CPU, RAM and disk usage.
 - Application secrets, VM provisioning, database migrations and image-build automation are not managed by Argo CD.
 - Automatic pruning is enabled for ordinary resources; all PVCs require confirmation for pruning and are retained if the Application is deleted. Do not deploy a second complete `prod` stack without considering resource limits and persistent-data backups.
+- `job-market-prod` is not bootstrapped by the ordinary dev setup. It tracks only approved changes on the `production` branch; GitHub branch protection and required environment reviewers must be configured separately.
