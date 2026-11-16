@@ -9,7 +9,7 @@ from release_images import check, read_tags, set_tags
 
 BASE = Path(__file__).resolve().parent.parent
 EXISTING_SHA = "f6777a134a2be7273430976cf68b58810340dd62"
-NEW_SHA = "fcb77a1bb0cae52147f34148164d421e666563fa"
+NEW_SHA = "c" * 40
 
 
 class ReleaseImagesTests(unittest.TestCase):

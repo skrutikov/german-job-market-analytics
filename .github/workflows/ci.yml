@@ -23,7 +23,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -e .
-          pip install black pytest
+          pip install black pytest PyYAML==6.0.2
 
       - name: Check code formatting with Black
         run: |
