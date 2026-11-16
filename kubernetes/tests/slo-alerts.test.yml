@@ -1,0 +1,165 @@
+# Prometheus test cases run with: promtool test rules kubernetes/tests/slo-alerts.test.yml
+# Synthetic counters are sampled once per minute; no live services are harmed.
+rule_files:
+  - ../base/config/alerts.yml
+evaluation_interval: 1m
+fuzzy_compare: true
+
+tests:
+  - name: healthy job searches should not alert
+    interval: 1m
+    input_series:
+      - series: 'up{job="job-market-backend",instance="backend:8000"}'
+        values: '1+0x45'
+      - series: 'job_search_requests_total{status="success"}'
+        values: '0+10x45'
+      - series: 'job_search_requests_total{status="failure"}'
+        values: '0+0x45'
+      - series: 'job_search_duration_seconds_bucket{le="0.25"}'
+        values: '0+10x45'
+      - series: 'job_search_duration_seconds_count'
+        values: '0+10x45'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: JobSearchAvailabilitySLOBreach
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: JobSearchLatencySLOBreach
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: JobSearchErrorRateHigh
+        exp_alerts: []
+
+  - name: sustained failures breach availability and error warning
+    interval: 1m
+    input_series:
+      - series: 'up{job="job-market-backend",instance="backend:8000"}'
+        values: '1+0x45'
+      - series: 'job_search_requests_total{status="success"}'
+        values: '0+8x45'
+      - series: 'job_search_requests_total{status="failure"}'
+        values: '0+2x45'
+      - series: 'job_search_duration_seconds_bucket{le="0.25"}'
+        values: '0+10x45'
+      - series: 'job_search_duration_seconds_count'
+        values: '0+10x45'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: JobSearchAvailabilitySLOBreach
+        exp_alerts:
+          - exp_labels: {severity: critical, service: job-search}
+            exp_annotations:
+              summary: "24h job-search availability below 99%"
+              description: "More than 1% of monitored job-list searches failed over 24h (at least 100 requests). Check backend logs, PostgreSQL and Elasticsearch."
+              runbook: "slo/README.md#troubleshooting"
+      - eval_time: 30m
+        alertname: JobSearchErrorRateHigh
+        exp_alerts:
+          - exp_labels: {severity: warning, service: job-search}
+            exp_annotations:
+              summary: "Search failure ratio above 5% in 15 minutes"
+              description: "At least 20 monitored searches in the past 15 minutes; investigate backend exceptions and dependency availability."
+              runbook: "slo/README.md#troubleshooting"
+
+  - name: sustained slow searches breach latency objective
+    interval: 1m
+    input_series:
+      - series: 'up{job="job-market-backend",instance="backend:8000"}'
+        values: '1+0x45'
+      - series: 'job_search_requests_total{status="success"}'
+        values: '0+10x45'
+      - series: 'job_search_requests_total{status="failure"}'
+        values: '0+0x45'
+      - series: 'job_search_duration_seconds_bucket{le="0.25"}'
+        values: '0+8x45'
+      - series: 'job_search_duration_seconds_count'
+        values: '0+10x45'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: JobSearchLatencySLOBreach
+        exp_alerts:
+          - exp_labels: {severity: critical, service: job-search}
+            exp_annotations:
+              summary: "Fewer than 95% of searches finish within 250 ms"
+              description: "The 24h server-side latency SLO is breached (at least 100 requests). Check query timings, Elasticsearch and CPU/memory."
+              runbook: "slo/README.md#troubleshooting"
+      - eval_time: 30m
+        alertname: JobSearchLatencyDegrading
+        exp_alerts:
+          - exp_labels: {severity: warning, service: job-search}
+            exp_annotations:
+              summary: "More than 10% of recent searches exceed 250 ms"
+              description: "At least 20 monitored searches in the past 15 minutes; review Prometheus latency charts and database/search load."
+              runbook: "slo/README.md#troubleshooting"
+
+  - name: low-traffic failures must not trigger percentage-based alerts
+    interval: 1m
+    input_series:
+      - series: 'up{job="job-market-backend",instance="backend:8000"}'
+        values: '1+0x45'
+      - series: 'job_search_requests_total{status="success"}'
+        values: '0+0x45'
+      - series: 'job_search_requests_total{status="failure"}'
+        values: '0+1x45'
+      - series: 'job_search_duration_seconds_bucket{le="0.25"}'
+        values: '0+0x45'
+      - series: 'job_search_duration_seconds_count'
+        values: '0+1x45'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: JobSearchAvailabilitySLOBreach
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: JobSearchLatencySLOBreach
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: JobSearchErrorRateHigh
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: JobSearchLatencyDegrading
+        exp_alerts: []
+
+  - name: unavailable backend scrape triggers a health alert
+    interval: 1m
+    input_series:
+      - series: 'up{job="job-market-backend",instance="backend:8000"}'
+        values: '0+0x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: BackendMetricsUnavailable
+        exp_alerts:
+          - exp_labels: {severity: critical, service: job-search, job: job-market-backend, instance: "backend:8000"}
+            exp_annotations:
+              summary: "Prometheus cannot scrape the job-market backend"
+              description: "The backend scrape target is down for at least 3 minutes. Check Pod readiness, Service endpoints and /metrics/."
+              runbook: "slo/README.md#troubleshooting"
+      - eval_time: 10m
+        alertname: BackendMetricsTargetMissing
+        exp_alerts: []
+
+  - name: missing backend target triggers a health alert
+    interval: 1m
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: BackendMetricsTargetMissing
+        exp_alerts:
+          - exp_labels: {severity: critical, service: job-search, job: job-market-backend}
+            exp_annotations:
+              summary: "Prometheus has no job-market backend scrape target"
+              description: "The backend scrape target has disappeared; check Prometheus configuration and service discovery."
+              runbook: "slo/README.md#troubleshooting"
+
+  - name: disposable Pushgateway signal exercises alert routing
+    interval: 1m
+    input_series:
+      - series: 'job_market_alert_test{job="slo-alert-test"}'
+        values: '1+0x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AlertingPipelineTest
+        exp_alerts:
+          - exp_labels: {severity: info, service: alerting, job: slo-alert-test}
+            exp_annotations:
+              summary: "Alerting pipeline test is active"
+              description: "A disposable Pushgateway metric was set to 1. Delete its Pushgateway group to clear this test alert."
+              runbook: "slo/README.md#safe-live-alert-test"

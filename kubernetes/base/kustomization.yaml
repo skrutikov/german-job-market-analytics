@@ -36,3 +36,4 @@ configMapGenerator:
     files:
       - job-market-dashboard.json=config/job-market-dashboard.json
       - performance-dashboard.json=config/performance-dashboard.json
+      - slo-dashboard.json=config/slo-dashboard.json

@@ -1,0 +1,467 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Search success (24h)",
+      "type": "stat",
+      "description": "Provisional goal: at least 99% successful monitored GET /jobs requests over 24 hours; undefined without traffic. Alerting requires at least 100 requests.",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 99
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "100 * job_market:search_availability:ratio24h",
+          "legendFormat": "__auto",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Searches ≤250 ms (24h)",
+      "type": "stat",
+      "description": "Provisional goal: 95% of monitored GET /jobs handler calls complete in at most 250 ms. Server-side only; threshold corresponds to le=0.25 bucket.",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 95
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "100 * job_market:search_latency_under_250ms:ratio24h",
+          "legendFormat": "__auto",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Search requests (24h)",
+      "type": "stat",
+      "description": "Volume over the 24h SLO window; alerts are suppressed when the sample size is too small.",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "job_market:search_requests:count24h",
+          "legendFormat": "__auto",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Firing alerts",
+      "type": "stat",
+      "description": "Number of currently firing Prometheus alerts; a zero means none are firing.",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "sum(ALERTS{alertstate=\"firing\"}) or vector(0)",
+          "legendFormat": "__auto",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Availability SLI vs 99% objective",
+      "type": "timeseries",
+      "description": "24-hour fraction of successful monitored searches; no traffic is not an availability measurement.",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 7,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "100 * job_market:search_availability:ratio24h",
+          "legendFormat": "Observed 24h",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "vector(99)",
+          "legendFormat": "Objective: 99%",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Fast-search SLI vs 95% objective",
+      "type": "timeseries",
+      "description": "24-hour fraction of monitored handler calls completed in ≤250 ms. Not end-to-end HTTP latency.",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "x": 12,
+        "y": 7,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 7,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "100 * job_market:search_latency_under_250ms:ratio24h",
+          "legendFormat": "Observed 24h",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "vector(95)",
+          "legendFormat": "Objective: 95%",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Recent search failures (15m)",
+      "type": "timeseries",
+      "description": "Percentage of monitored searches which raised an exception during the last 15m. The alert requires ≥20 searches.",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 7,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "100 * job_market:search_error:ratio15m",
+          "legendFormat": "Failure %",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Monitoring targets up",
+      "type": "timeseries",
+      "description": "A value of 1 means the Prometheus scrape works. A zero means the target is unavailable.",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "x": 12,
+        "y": 15,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 7,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": "Prometheus",
+          "editorMode": "code",
+          "expr": "up{job=~\"job-market-backend|kubernetes-cadvisor|kube-state-metrics\"}",
+          "legendFormat": "{{job}}",
+          "range": true
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": [
+    "job-market",
+    "slo",
+    "prometheus",
+    "alerting"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Job Market — SLOs & Alerts",
+  "uid": "job-market-slos",
+  "version": 1
+}

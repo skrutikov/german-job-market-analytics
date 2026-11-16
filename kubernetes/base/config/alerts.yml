@@ -11,3 +11,130 @@ groups:
         annotations:
           summary: "ETL has not completed successfully"
           description: "The last successful ETL run was more than 26 hours ago."
+  # The SLOs deliberately cover the monitored GET /jobs handler, NOT all HTTP routes.
+  # Twenty-four-hour window fits the current seven-day Prometheus retention.
+  - name: job_search_slos
+    interval: 1m
+    rules:
+      - record: job_market:search_requests:count24h
+        expr: sum(increase(job_search_requests_total[24h]))
+      - record: job_market:search_requests:count15m
+        expr: sum(increase(job_search_requests_total[15m]))
+      - record: job_market:search_availability:ratio24h
+        # A missing "failure" series is expected until the first failure.
+        # No traffic gives NaN (unknown), not a misleading 100% success.
+        expr: |
+          (sum(increase(job_search_requests_total{status="success"}[24h])) or vector(0))
+          / sum(increase(job_search_requests_total[24h]))
+      - record: job_market:search_latency_under_250ms:ratio24h
+        # Standard Python Prometheus histogram has a le="0.25" bucket.
+        # Histogram measures completed handler calls, including exceptions.
+        expr: |
+          sum(increase(job_search_duration_seconds_bucket{le="0.25"}[24h]))
+          / sum(increase(job_search_duration_seconds_count[24h]))
+      - record: job_market:search_latency_under_250ms:ratio15m
+        expr: |
+          sum(increase(job_search_duration_seconds_bucket{le="0.25"}[15m]))
+          / sum(increase(job_search_duration_seconds_count[15m]))
+      - record: job_market:search_error:ratio15m
+        expr: |
+          (sum(increase(job_search_requests_total{status="failure"}[15m])) or vector(0))
+          / sum(increase(job_search_requests_total[15m]))
+
+      # Low-traffic suppression prevents five smoke requests from triggering SLO alarms.
+      # These thresholds are provisional demonstration objectives, not contractual SLAs.
+      - alert: JobSearchAvailabilitySLOBreach
+        expr: |
+          (job_market:search_availability:ratio24h < 0.99)
+          and on() (job_market:search_requests:count24h >= 100)
+        for: 10m
+        labels:
+          severity: critical
+          service: job-search
+        annotations:
+          summary: "24h job-search availability below 99%"
+          description: "More than 1% of monitored job-list searches failed over 24h (at least 100 requests). Check backend logs, PostgreSQL and Elasticsearch."
+          runbook: "slo/README.md#troubleshooting"
+      - alert: JobSearchLatencySLOBreach
+        expr: |
+          (job_market:search_latency_under_250ms:ratio24h < 0.95)
+          and on() (job_market:search_requests:count24h >= 100)
+        for: 10m
+        labels:
+          severity: critical
+          service: job-search
+        annotations:
+          summary: "Fewer than 95% of searches finish within 250 ms"
+          description: "The 24h server-side latency SLO is breached (at least 100 requests). Check query timings, Elasticsearch and CPU/memory."
+          runbook: "slo/README.md#troubleshooting"
+      - alert: JobSearchErrorRateHigh
+        expr: |
+          (job_market:search_error:ratio15m > 0.05)
+          and on() (job_market:search_requests:count15m >= 20)
+        for: 3m
+        labels:
+          severity: warning
+          service: job-search
+        annotations:
+          summary: "Search failure ratio above 5% in 15 minutes"
+          description: "At least 20 monitored searches in the past 15 minutes; investigate backend exceptions and dependency availability."
+          runbook: "slo/README.md#troubleshooting"
+      - alert: JobSearchLatencyDegrading
+        expr: |
+          (job_market:search_latency_under_250ms:ratio15m < 0.90)
+          and on() (job_market:search_requests:count15m >= 20)
+        for: 5m
+        labels:
+          severity: warning
+          service: job-search
+        annotations:
+          summary: "More than 10% of recent searches exceed 250 ms"
+          description: "At least 20 monitored searches in the past 15 minutes; review Prometheus latency charts and database/search load."
+          runbook: "slo/README.md#troubleshooting"
+
+  - name: monitoring_health
+    interval: 1m
+    rules:
+      # Operator-controlled canary: pushing job_market_alert_test=1 to
+      # Pushgateway exercises Prometheus -> Alertmanager without an outage.
+      - alert: AlertingPipelineTest
+        expr: job_market_alert_test == 1
+        for: 1m
+        labels:
+          severity: info
+          service: alerting
+        annotations:
+          summary: "Alerting pipeline test is active"
+          description: "A disposable Pushgateway metric was set to 1. Delete its Pushgateway group to clear this test alert."
+          runbook: "slo/README.md#safe-live-alert-test"
+      - alert: BackendMetricsUnavailable
+        expr: up{job="job-market-backend"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          service: job-search
+        annotations:
+          summary: "Prometheus cannot scrape the job-market backend"
+          description: "The backend scrape target is down for at least 3 minutes. Check Pod readiness, Service endpoints and /metrics/."
+          runbook: "slo/README.md#troubleshooting"
+      - alert: BackendMetricsTargetMissing
+        expr: absent(up{job="job-market-backend"})
+        for: 5m
+        labels:
+          severity: critical
+          service: job-search
+        annotations:
+          summary: "Prometheus has no job-market backend scrape target"
+          description: "The backend scrape target has disappeared; check Prometheus configuration and service discovery."
+          runbook: "slo/README.md#troubleshooting"
+      - alert: KubernetesMetricsUnavailable
+        expr: up{job=~"kubernetes-cadvisor|kube-state-metrics"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: monitoring
+        annotations:
+          summary: "Kubernetes monitoring target cannot be scraped"
+          description: "Prometheus has been unable to scrape {{ $labels.job }} for at least 5 minutes. Check exporter Pods, RBAC and network access."
+          runbook: "slo/README.md#troubleshooting"
+

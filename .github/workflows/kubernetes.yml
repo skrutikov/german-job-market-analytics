@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, gitops-pruning]
+    branches: [main, slo-alerting]
   workflow_dispatch:
 
 permissions:
@@ -53,6 +53,28 @@ jobs:
           assert len({panel["id"] for panel in dashboard["panels"]}) == len(dashboard["panels"])
           assert all(panel["targets"] for panel in dashboard["panels"])
           PY
+      - name: Validate Prometheus and Alertmanager rules
+        run: |
+          docker run --rm --entrypoint /bin/promtool \
+            -v "$PWD/kubernetes:/work:ro" prom/prometheus:v3.6.0 \
+            check rules /work/base/config/alerts.yml
+          docker run --rm --entrypoint /bin/promtool \
+            -v "$PWD/kubernetes:/work:ro" -w /work/tests prom/prometheus:v3.6.0 \
+            test rules slo-alerts.test.yml
+          docker run --rm --entrypoint /bin/amtool \
+            -v "$PWD/kubernetes/base/config:/config:ro" prom/alertmanager:v0.28.1 \
+            check-config /config/alertmanager.yml
+      - name: Validate SLO Grafana dashboard
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          dashboard = json.loads(Path("kubernetes/base/config/slo-dashboard.json").read_text())
+          assert dashboard["uid"] == "job-market-slos"
+          assert len(dashboard["panels"]) == 8
+          assert len({panel["id"] for panel in dashboard["panels"]}) == 8
+          assert all(panel["targets"] for panel in dashboard["panels"])
+          PY
       - name: Validate rendered Kustomize overlays
         run: |
           for environment in dev prod; do
@@ -61,7 +83,8 @@ jobs:
           done
 
   publish:
-    if: github.event_name != 'pull_request'
+    # Monitoring-only branches need CI, not overwriting the dev image tag.
+    if: github.event_name == 'push' && github.ref_name == 'main'
     needs: validate
     runs-on: ubuntu-latest
     permissions:
