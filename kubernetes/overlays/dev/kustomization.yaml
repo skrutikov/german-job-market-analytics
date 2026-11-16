@@ -5,6 +5,13 @@ resources:
   - ../../base
   - ingress.yaml
   - cadvisor-rbac.yaml
+# Keep common application configuration in ../../base; override only
+# environment-specific values in this overlay.
+configMapGenerator:
+  - name: job-market-settings
+    behavior: merge
+    literals:
+      - DEPLOYMENT_ENV=development
 images:
   # CI advances dev to the newly published, security-scanned immutable release.
   # Production uses a separate, approval-controlled Git branch.
