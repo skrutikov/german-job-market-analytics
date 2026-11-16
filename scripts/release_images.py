@@ -53,7 +53,9 @@ def check(root: Path, environment: str, sha: str) -> None:
     expected = release_tag(sha)
     tags = read_tags(root, environment)
     if tags != [expected, expected]:
-        raise ValueError(f"{environment}: expected both images at {expected}; found {tags}")
+        raise ValueError(
+            f"{environment}: expected both images at {expected}; found {tags}"
+        )
 
 
 def set_tags(root: Path, environment: str, sha: str) -> bool:
@@ -64,7 +66,8 @@ def set_tags(root: Path, environment: str, sha: str) -> bool:
     after = before
     for image_name in IMAGE_NAMES:
         pattern = re.compile(
-            r"(^[ \t]*- name: " + re.escape(image_name)
+            r"(^[ \t]*- name: "
+            + re.escape(image_name)
             + r"[ \t]*\n[ \t]*newTag:[ \t]*)"
             + r"(?:main|dev|sha-[0-9a-f]{40})([ \t]*$)",
             re.MULTILINE,
@@ -99,7 +102,9 @@ def main() -> None:
             # The candidate must be the exact release currently selected for dev.
             check(args.root, "dev", args.sha)
             changed = set_tags(args.root, "prod", args.sha)
-            print(f"prod: {'promoted' if changed else 'already pinned'} to sha-{args.sha}")
+            print(
+                f"prod: {'promoted' if changed else 'already pinned'} to sha-{args.sha}"
+            )
         else:
             check(args.root, "prod", args.sha)
             print(f"prod: both images use sha-{args.sha}")

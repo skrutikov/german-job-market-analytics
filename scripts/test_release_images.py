@@ -41,13 +41,22 @@ class ReleaseImagesTests(unittest.TestCase):
         check(self.root, "prod", NEW_SHA)
 
     def test_reject_malformed_shas(self):
-        for invalid in ("main", "abc", "A" * 40, "a" * 39, "a" * 41, "a" * 40 + ";oops"):
+        for invalid in (
+            "main",
+            "abc",
+            "A" * 40,
+            "a" * 39,
+            "a" * 41,
+            "a" * 40 + ";oops",
+        ):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 set_tags(self.root, "dev", invalid)
 
     def test_reject_extra_image_entry(self):
         path = self.root / "kubernetes/overlays/dev/kustomization.yaml"
-        path.write_text(path.read_text() + "  - name: malicious/image\n    newTag: main\n")
+        path.write_text(
+            path.read_text() + "  - name: malicious/image\n    newTag: main\n"
+        )
         with self.assertRaises(ValueError):
             set_tags(self.root, "dev", EXISTING_SHA)
 
