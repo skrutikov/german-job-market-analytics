@@ -50,20 +50,24 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+echo "Computing SHA-256 checksums for the existing backup archives..."
 (
   cd "$backup"
   sha256sum secret.json.age postgres.dump.age airflow-state.tar.gz.age \
             etl-data.tar.gz.age grafana-data.tar.gz.age backup-metadata.txt \
     > SHA256SUMS
 )
+echo "Verifying decryption and archive formats (live progress below)..."
+# tee writes the complete diagnostic log AND shows progress in the terminal.
+# pipefail is enabled: a failed verifier still fails finalization.
 if bash "$(dirname -- "$0")/verify_backup.sh" "$ns" "$host" "$backup" "$identity" \
-    > "$backup/verification.txt.partial" 2>&1; then
+    2>&1 | tee "$backup/verification.txt.partial"; then
   mv "$backup/verification.txt.partial" "$backup/verification.txt"
 else
-  cat "$backup/verification.txt.partial" >&2
-  die "Backup archive verification failed"
+  die "Backup archive verification failed; review the output above"
 fi
 
+echo "Recalculating final SHA-256 manifest with verification report..."
 (
   cd "$backup"
   sha256sum secret.json.age postgres.dump.age airflow-state.tar.gz.age \
