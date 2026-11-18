@@ -43,7 +43,10 @@ begin_maintenance() {
   for workload in airflow grafana; do
     stopped=false
     for ((attempt=1; attempt<=90; attempt++)); do
-      if [[ -z "$(remote "sudo -n k3s kubectl -n $ns get pods -l app=$workload -o name")" ]]; then
+      local pod_names
+      pod_names="$(remote "sudo -n k3s kubectl -n $ns get pods -l app=$workload -o name")" ||
+        die "Could not check $workload Pods over SSH"
+      if [[ -z "$pod_names" ]]; then
         stopped=true
         break
       fi
