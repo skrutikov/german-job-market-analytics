@@ -75,9 +75,12 @@ cannot decrypt the backup.
 
 ## Create backup (normal operation)
 
-1. Pick `dev` or `prod`. Record the current matching image tags in
-   `kubernetes/overlays/<namespace>/kustomization.yaml` and the Git commit;
-   note the `production` branch for prod. Confirm sufficient free space.
+1. Pick `dev` or `prod` and confirm sufficient free space on the
+   workstation. **No manual recording of image tags or Git commits is needed.**
+   `dr/backup.sh` queries the actual Kubernetes Deployment images and Argo CD
+   and writes `backup-metadata.txt` beside the encrypted backup files.
+   For `prod`, Argo CD tracks `production`, which may differ from the
+   Git branch checked out on either the workstation or the VM.
 2. **Pause that Argo CD Application's automatic sync/self-healing** in the UI
    (job-market-dev or job-market-prod), and prevent new ETL runs. Check no
    active ETL Jobs; Airflow must not launch another DAG. In the VM, quiesce
@@ -104,7 +107,15 @@ cannot decrypt the backup.
    Secret JSON, and tar/gzip archives of three important PVCs through SSH;
    **age encrypts each stream before writing it on the workstation**.
    Temporary BusyBox reader Pods mount one PVC at a time and are deleted
-   after each copy. `SHA256SUMS` is written only after all steps succeed.
+   after each copy. The human-readable, non-secret
+   `backup-metadata.txt` records the namespace, start time, live backend,
+   frontend and Airflow image references, matching release tag, GitOps branch,
+   Argo CD observed Git revision and last successful sync revision, and sync
+   and health status. Argo CD may be `OutOfSync` after you intentionally
+   scale down workloads for the backup. The script refuses to back up when
+   the tags disagree or it cannot determine a valid Argo CD revision.
+   `SHA256SUMS` covers both the encrypted archives **and metadata text**;
+   it is written only after all steps succeed.
    Backup directory pattern: `$DR_BACKUP_ROOT/dev/YYYYMMDDTHHMMSSZ`.
 
 4. Check the exit code and archive sizes:
@@ -112,10 +123,12 @@ cannot decrypt the backup.
    ```bash
    cd "$DR_BACKUP_ROOT/dev/YYYYMMDDTHHMMSSZ"
    sha256sum -c SHA256SUMS
+   cat backup-metadata.txt
    ls -lh *.age
    ```
 
-   A checksum validates storage integrity, **not** database restorability.
+   The metadata is saved **on the workstation next to the backup**, not in
+   Git. A checksum validates storage integrity, **not** database restorability.
    An incomplete directory without `SHA256SUMS` is not usable.
    Copy the entire completed encrypted directory to second off-VM storage.
 5. Resume Airflow/Grafana replicas to 1 and restore Argo CD auto-sync.
