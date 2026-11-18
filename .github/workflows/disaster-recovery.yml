@@ -24,23 +24,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run -d --name dr-test -e POSTGRES_PASSWORD=test-only postgres:17
+          docker run -d --name dr-test -e POSTGRES_USER=job_market -e POSTGRES_DB=job_market -e POSTGRES_PASSWORD=test-only postgres:17
           trap 'docker rm -f dr-test >/dev/null 2>&1 || true' EXIT
           for i in {1..60}; do
-            if docker exec dr-test pg_isready -U postgres >/dev/null 2>&1; then break; fi
+            if docker exec dr-test pg_isready -U job_market >/dev/null 2>&1; then break; fi
             sleep 1
           done
-          docker exec dr-test psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE job_market'
-          docker exec dr-test psql -U postgres -d job_market -v ON_ERROR_STOP=1 -c \
+          docker exec dr-test psql -U job_market -d job_market -v ON_ERROR_STOP=1 -c \
             "CREATE TABLE dr_probe (id integer PRIMARY KEY, label text); INSERT INTO dr_probe VALUES (1, 'yesterday');"
-          docker exec dr-test pg_dump -U postgres -d job_market -Fc --no-owner --no-privileges > /tmp/dr-test.dump
+          docker exec dr-test pg_dump -U job_market -d job_market -Fc --no-owner --no-privileges > /tmp/dr-test.dump
           test -s /tmp/dr-test.dump
           docker exec -i dr-test pg_restore --list < /tmp/dr-test.dump >/dev/null
-          docker exec dr-test psql -U postgres -d job_market -v ON_ERROR_STOP=1 -c \
+          docker exec dr-test psql -U job_market -d job_market -v ON_ERROR_STOP=1 -c \
             "UPDATE dr_probe SET label='today';"
-          docker exec -i dr-test pg_restore -U postgres -d job_market \
+          docker exec -i dr-test pg_restore -U job_market -d job_market \
             --clean --if-exists --no-owner --no-privileges --exit-on-error --single-transaction \
             < /tmp/dr-test.dump
-          actual="$(docker exec dr-test psql -U postgres -d job_market -Atqc 'SELECT label FROM dr_probe WHERE id=1')"
+          actual="$(docker exec dr-test psql -U job_market -d job_market -Atqc 'SELECT label FROM dr_probe WHERE id=1')"
           test "$actual" = yesterday
           echo "PostgreSQL backup/restore roundtrip passed"
