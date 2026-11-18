@@ -162,6 +162,8 @@ cannot decrypt the backup.
    queried; the container is removed afterward. It does not touch the
    production database but temporarily uses local Docker storage containing
    decrypted data. The command still asks for maintenance approval.
+   **The script resumes Airflow/Grafana and Argo CD immediately after all
+   source volumes are copied, before time-consuming verification.**
    Without `DR_TEST_DB_RESTORE=1`, the automatic checks validate archive
    integrity and format but **not** the ability to restore the entire DB.
 
@@ -191,11 +193,17 @@ bash dr/finalize_backup.sh prod k3s-vm \
 The script checks the expected files, namespace, SSH host and timestamp,
 recalculates archive checksums, decrypts and parses the Kubernetes Secret,
 verifies PostgreSQL dump format, and fully reads all three compressed tar
-archives. Only upon success does it write `verification.txt` and a final
-`SHA256SUMS`. It does not pause Argo CD, restart Pods or write to the
-production database. Optional `DR_TEST_DB_RESTORE=1` performs a real
-restore in a disposable local Docker container. Failure leaves the
-directory unmarked, and it must not be used as a backup.
+archives. **It prints the current verification stage live** while saving
+the same output to `verification.txt.partial`; after success, this becomes
+`verification.txt`, and `SHA256SUMS` is finalized. It does not pause Argo
+CD, restart Pods or write to the production database.
+`DR_VERIFY_TIMEOUT_SECONDS` (default 900 seconds per long-running
+archive or PostgreSQL format check) bounds verification commands that become
+stuck. Optional `DR_TEST_DB_RESTORE=1` performs a real restore in a
+disposable local Docker container. Failure leaves the directory unmarked,
+and it must not be used as a backup. An earlier version redirected
+verification output to a file without showing it; in a second terminal,
+run `tail -f /path/to/backup/verification.txt.partial` to inspect progress.
 
 This procedure is appropriate only if the data-copy phase finished
 successfully; it cannot repair missing or truncated archived data.
