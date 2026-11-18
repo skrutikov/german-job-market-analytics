@@ -10,8 +10,13 @@ host="$2"; backup="$3"; identity="$4"
 require_tools
 command -v tar >/dev/null || die "tar is required"
 command -v python3 >/dev/null || die "python3 is required"
+command -v timeout >/dev/null || die "timeout is required (coreutils)"
+verify_timeout="${DR_VERIFY_TIMEOUT_SECONDS:-900}"
+[[ "$verify_timeout" =~ ^[0-9]+$ ]] && (( verify_timeout >= 60 )) ||
+  die "DR_VERIFY_TIMEOUT_SECONDS must be an integer >= 60"
 [[ -d "$backup" && -f "$backup/SHA256SUMS" && -f "$identity" ]] ||
   die "Backup, checksums or private age identity missing"
+echo "Checking cluster connection and checksums..."
 check_host "$host"
 (cd "$backup" && sha256sum -c SHA256SUMS)
 decrypt() { age -d -i "$identity" "$backup/$1"; }
@@ -27,13 +32,19 @@ assert data.get("metadata", {}).get("name") == "job-market-secrets"
 assert isinstance(data.get("data"), dict) and data["data"]
 ' "$ns"
 
-echo "Read-only pg_restore listing of decrypted PostgreSQL dump"
+echo "Read-only PostgreSQL dump format check (timeout: ${verify_timeout}s)..."
+# Unlike the previous unbounded kubectl exec, timeout prevents an API stream
+# that has stopped responding from hanging verification indefinitely.
 decrypt postgres.dump.age |
-  remote "sudo -n k3s kubectl -n $ns exec -i deployment/postgres -- pg_restore --list" >/dev/null
+  timeout "$verify_timeout" ssh -T -o BatchMode=yes -o ConnectTimeout=15 \
+    -o ServerAliveInterval=15 -o ServerAliveCountMax=3 "$DR_SSH_HOST" \
+    "sudo -n k3s kubectl -n $ns exec -i deployment/postgres -- pg_restore --list" >/dev/null
+echo "PostgreSQL archive format: OK"
 
 for name in airflow-state etl-data grafana-data; do
   echo "Validating encrypted compressed volume archive: $name"
-  decrypt "$name.tar.gz.age" | tar -tzf - >/dev/null
+  decrypt "$name.tar.gz.age" | timeout "$verify_timeout" tar -tzf - >/dev/null
+  echo "$name archive: OK"
 done
 echo "All encrypted backup archives passed format and decryption checks."
 
