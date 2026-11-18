@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run on an operator workstation, never on the Proxmox/k3s VM.
-# Usage: bash dr/backup.sh dev k3s-vm AGE_RECIPIENT /safe/off-vm/backups
+# Usage: bash dr/backup.sh prod k3s-vm (or specify recipient and backup root)
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 source "$(dirname "$0")/maintenance.sh"
@@ -53,7 +53,7 @@ cleanup() {
   fi
   end_maintenance "$ns" || rc=1
   if ! "$complete"; then
-    rm -f "$output"/*.partial
+    rm -f "$output"/*.partial "$output/SHA256SUMS"
     printf 'Backup incomplete: %s (do NOT restore this directory)\n' "$output" >&2
   fi
   exit "$rc"
