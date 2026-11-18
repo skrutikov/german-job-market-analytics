@@ -20,6 +20,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Shell syntax
         run: bash -n dr/common.sh dr/backup.sh dr/restore.sh
+      - name: Test automated backup metadata recording
+        run: python3 -m unittest discover -s dr -p 'test_*.py' -v
       - name: PostgreSQL 17 dump and clean restore roundtrip
         shell: bash
         run: |
