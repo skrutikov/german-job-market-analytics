@@ -29,13 +29,6 @@ printf 'key check' | age -r "$recipient" |
 check_host "$2"
 umask 077
 
-# Confirm a short maintenance interruption before stopping production writers.
-if [[ "${DR_CONFIRM_MAINTENANCE:-}" != "$ns" ]]; then
-  [[ -t 0 ]] || die "Set DR_CONFIRM_MAINTENANCE=$ns for noninteractive use"
-  printf 'Pause %s Argo auto-sync and Airflow/Grafana briefly? Type YES: ' "$ns"
-  read -r answer
-  [[ "$answer" == YES ]] || die "Backup cancelled"
-fi
 remote "sudo -n k3s kubectl -n $ns rollout status deployment/postgres --timeout=120s" >/dev/null
 
 # Preflight k3s local-path volumes *before* stopping production workloads.
@@ -48,6 +41,15 @@ for claim in airflow-state etl-data grafana-data; do
     die "Cannot archive $path using passwordless sudo tar on VM"
   dr_volume_paths["$claim"]="$path"
 done
+
+# Request downtime approval only after every read-only storage preflight passes.
+# Confirm a short maintenance interruption before stopping production writers.
+if [[ "${DR_CONFIRM_MAINTENANCE:-}" != "$ns" ]]; then
+  [[ -t 0 ]] || die "Set DR_CONFIRM_MAINTENANCE=$ns for noninteractive use"
+  printf 'Pause %s Argo auto-sync and Airflow/Grafana briefly? Type YES: ' "$ns"
+  read -r answer
+  [[ "$answer" == YES ]] || die "Backup cancelled"
+fi
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 output="$root/$ns/$stamp"
