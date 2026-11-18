@@ -7,6 +7,8 @@ source "$(dirname -- "$0")/common.sh"
   die "Usage: bash dr/verify_backup.sh dev|prod SSH_HOST BACKUP_DIR AGE_IDENTITY"
 ns="$1"; validate_namespace "$ns"
 host="$2"; backup="$3"; identity="$4"
+[[ -n "$host" && "$host" =~ ^[a-zA-Z0-9_.@-]+$ ]] ||
+  die "Invalid source SSH host in metadata"
 require_tools
 command -v tar >/dev/null || die "tar is required"
 command -v python3 >/dev/null || die "python3 is required"
@@ -16,13 +18,21 @@ verify_timeout="${DR_VERIFY_TIMEOUT_SECONDS:-900}"
   die "DR_VERIFY_TIMEOUT_SECONDS must be an integer >= 60"
 [[ -d "$backup" && -f "$backup/SHA256SUMS" && -f "$identity" ]] ||
   die "Backup, checksums or private age identity missing"
-echo "Checking cluster connection and checksums..."
-check_host "$host"
+script_dir="$(cd -- "$(dirname -- "$0")" && pwd)"
+echo "Verifying backup locally; no SSH or Kubernetes connection needed."
 (cd "$backup" && sha256sum -c SHA256SUMS)
-decrypt() { age -d -i "$identity" "$backup/$1"; }
 
-echo "Validating encrypted Kubernetes Secret and namespace"
-decrypt secret.json.age | python3 -c '
+# Apply one timeout to the WHOLE decryption + validation pipeline, not just
+# its last command. On expiration, timeout signals the entire process group.
+verify_stream() {
+  local file="$1"; shift
+  timeout --kill-after=5s "$verify_timeout" \
+    bash -o pipefail -c 'age -d -i "$1" "$2" | "${@:3}"' \
+    dr-verify "$identity" "$backup/$file" "$@"
+}
+
+echo "Validating encrypted Kubernetes Secret and namespace..."
+verify_stream secret.json.age python3 -c '
 import json, sys
 data = json.load(sys.stdin)
 expected = sys.argv[1]
@@ -32,21 +42,45 @@ assert data.get("metadata", {}).get("name") == "job-market-secrets"
 assert isinstance(data.get("data"), dict) and data["data"]
 ' "$ns"
 
-echo "Read-only PostgreSQL dump format check (timeout: ${verify_timeout}s)..."
-# Unlike the previous unbounded kubectl exec, timeout prevents an API stream
-# that has stopped responding from hanging verification indefinitely.
-decrypt postgres.dump.age |
-  timeout "$verify_timeout" ssh -T -o BatchMode=yes -o ConnectTimeout=15 \
-    -o ServerAliveInterval=15 -o ServerAliveCountMax=3 "$DR_SSH_HOST" \
-    "sudo -n k3s kubectl -n $ns exec -i deployment/postgres -- pg_restore --list" >/dev/null
-echo "PostgreSQL archive format: OK"
+echo "Authenticating entire PostgreSQL dump and checking PGDMP header..."
+verify_stream postgres.dump.age python3 "$script_dir/check_pg_dump.py"
+
+# A real pg_restore --list is useful, but NEVER send the dump through the
+# Kubernetes API. Prefer a local PostgreSQL 17+ client, then an existing
+# network-isolated postgres:17 Docker image. A full restore still requires
+# the separate optional DR_TEST_DB_RESTORE=1 drill.
+pg_list_checked=false
+if command -v pg_restore >/dev/null 2>&1; then
+  version="$(pg_restore --version)"
+  if [[ "$version" =~ PostgreSQL[[:space:]]([0-9]+) ]] &&
+     (( ${BASH_REMATCH[1]} >= 17 )); then
+    echo "Checking PostgreSQL dump TOC with local $version..."
+    verify_stream postgres.dump.age pg_restore --list >/dev/null
+    pg_list_checked=true
+  fi
+fi
+if ! "$pg_list_checked" && command -v docker >/dev/null 2>&1 &&
+   timeout 5s docker info >/dev/null 2>&1 &&
+   timeout 5s docker image inspect postgres:17 >/dev/null 2>&1; then
+  echo "Checking PostgreSQL dump TOC with local postgres:17 Docker image..."
+  verify_stream postgres.dump.age docker run --rm -i --pull=never \
+    --network none postgres:17 pg_restore --list >/dev/null
+  pg_list_checked=true
+fi
+if "$pg_list_checked"; then
+  echo "PostgreSQL custom dump TOC: OK"
+else
+  echo "NOTE: No local PostgreSQL 17+ pg_restore or cached postgres:17 Docker image."
+  echo "PGDMP signature and complete authenticated stream checked; PostgreSQL TOC"
+  echo "and actual database restorability NOT verified. Run an isolated restore test."
+fi
 
 for name in airflow-state etl-data grafana-data; do
-  echo "Validating encrypted compressed volume archive: $name"
-  decrypt "$name.tar.gz.age" | timeout "$verify_timeout" tar -tzf - >/dev/null
+  echo "Validating encrypted compressed volume archive: $name..."
+  verify_stream "$name.tar.gz.age" tar -tzf - >/dev/null
   echo "$name archive: OK"
 done
-echo "All encrypted backup archives passed format and decryption checks."
+echo "All encrypted archives passed decryption/integrity checks."
 
 if [[ "${DR_TEST_DB_RESTORE:-0}" == 1 ]]; then
   command -v docker >/dev/null || die "Local Docker is required for DR_TEST_DB_RESTORE=1"
