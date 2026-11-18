@@ -92,16 +92,20 @@ if [[ "$stage" == volumes ]]; then
     [[ "$replicas" == 0 ]] || die "$deployment must be stopped"
   done
   for claim in airflow-state etl-data grafana-data; do
+    # The helper Pod triggers local-path provisioning for the fresh PVC and
+    # performs only a short emptiness check through the Kubernetes API.
     create_helper "$ns" "$claim"
     active_helper=true
-    if remote "sudo -n k3s kubectl -n $ns exec dr-volume-helper -- sh -c 'test -z \"\$(ls -A /backup)\"'"; then
-      decrypt "$claim.tar.gz.age" | gzip -dc |
-        remote "sudo -n k3s kubectl -n $ns exec -i dr-volume-helper -- tar -C /backup -xf -"
-    else
+    if ! remote "sudo -n k3s kubectl -n $ns exec dr-volume-helper -- sh -c 'test -z \"\$(ls -A /backup)\"'"; then
       die "$claim is not empty; use fresh PVCs, do not overwrite existing data"
     fi
+    path="$(local_pv_path "$ns" "$claim")"
     delete_helper "$ns"
     active_helper=false
+    # Restore compressed tar over SSH directly on the replacement node.
+    # Avoid long kubectl exec streams, which can reset for large ETL data.
+    decrypt "$claim.tar.gz.age" |
+      remote "sudo -n tar -C $path -xzf -"
   done
   echo "Restored file volumes. Deploy PostgreSQL alone next."
   exit 0
