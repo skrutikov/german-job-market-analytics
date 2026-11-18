@@ -53,4 +53,15 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y age
-          bash dr/test_offline_finalize.sh /tmp/dr-test.dump
+          # A tiny dump fits inside a pipe buffer and cannot reproduce an
+          # early-closing pg_restore --list causing age to receive SIGPIPE.
+          # Build a >1 MiB real custom-format dump for regression coverage.
+          docker exec dr-test psql -U job_market -d job_market -v ON_ERROR_STOP=1 -c \
+            "CREATE TABLE dr_payload (id integer PRIMARY KEY, payload text);
+             INSERT INTO dr_payload
+             SELECT i, md5(i::text) || md5((i+100000)::text)
+             FROM generate_series(1, 100000) AS i;"
+          docker exec dr-test pg_dump -U job_market -d job_market -Fc \
+            --no-owner --no-privileges > /tmp/dr-large.dump
+          test "$(stat -c %s /tmp/dr-large.dump)" -gt 1048576
+          bash dr/test_offline_finalize.sh /tmp/dr-large.dump
