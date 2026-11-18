@@ -42,17 +42,8 @@ remote "sudo -n k3s kubectl -n $ns rollout status deployment/postgres --timeout=
 # Stream compressed tar from the VM over SSH, without kubectl exec.
 declare -A dr_volume_paths
 for claim in airflow-state etl-data grafana-data; do
-  pv="$(remote "sudo -n k3s kubectl -n $ns get pvc $claim -o jsonpath='{.spec.volumeName}'")"
-  [[ "$pv" =~ ^pvc-[0-9a-f-]+$ ]] ||
-    die "PVC $ns/$claim is not bound to a standard k3s local-path PV"
-  pv_claim="$(remote "sudo -n k3s kubectl get pv $pv -o jsonpath='{.spec.claimRef.namespace}/{.spec.claimRef.name}'")"
-  [[ "$pv_claim" == "$ns/$claim" ]] ||
-    die "PV $pv does not belong to $ns/$claim"
-  path="$(remote "sudo -n k3s kubectl get pv $pv -o jsonpath='{.spec.hostPath.path}'")"
-  expected_path="^/var/lib/rancher/k3s/storage/pvc-[0-9a-f-]+_${ns}_${claim}$"
-  [[ "$path" =~ $expected_path ]] ||
-    die "Unsupported or unsafe local-path directory for $ns/$claim: $path"
-  # Test sudo permission and path without reading any file contents.
+  path="$(local_pv_path "$ns" "$claim")"
+  # Test sudo permission and the path without reading file data.
   remote "sudo -n tar -C $path -czf - --files-from /dev/null >/dev/null" ||
     die "Cannot archive $path using passwordless sudo tar on VM"
   dr_volume_paths["$claim"]="$path"
