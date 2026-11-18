@@ -109,7 +109,10 @@ cannot decrypt the backup.
    **age encrypts each stream before writing it on the workstation**.
    For the three file PVCs, it discovers the bound Kubernetes PVs and reads
    the k3s **local-path directories directly on the Ubuntu VM** using
-   `sudo -n tar`. Compression happens on the VM before transmission.
+   `sudo -n tar`. The PV backing directory may be stored as either
+   `spec.local.path` or `spec.hostPath.path`; both are supported and
+   validated against the expected namespace, StorageClass and k3s root.
+   Compression happens on the VM before transmission.
    This avoids long-running `kubectl exec` API streams, which can reset
    when copying large ETL files. There is no helper Pod during backup.
    The script verifies the PV claim association, restrictive expected
@@ -191,6 +194,16 @@ On the workstation, an incomplete backup directory **without a valid
 `disaster-recovery` checkout. It creates a new timestamped directory.
 If the node-path preflight fails, check the PVC/PV storage layout and
 passwordless sudo permissions rather than disabling the safety check.
+If it reports a blank volume path, a prior script version may be querying
+only `spec.hostPath.path` even though that PV uses `spec.local.path`.
+The updated resolver handles both. On the Ubuntu VM, inspect this
+non-secret, read-only PV description without modifying storage:
+
+```bash
+PV=$(sudo k3s kubectl -n prod get pvc airflow-state -o jsonpath='{.spec.volumeName}')
+sudo k3s kubectl get pv "$PV" -o jsonpath='{.spec.storageClassName}{"\n"}{.spec.local.path}{"\n"}{.spec.hostPath.path}{"\n"}'
+```
+
 The k3s default local-path storage root is expected to be
 `/var/lib/rancher/k3s/storage`.
 
