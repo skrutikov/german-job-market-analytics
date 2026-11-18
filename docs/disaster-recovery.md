@@ -39,6 +39,14 @@ connection uses the Proxmox jump host, not an exposed Kubernetes API. The
 remote Ubuntu VM must support `sudo -n k3s kubectl`. Install `age`, `ssh`,
 `gzip`, `sha256sum`, and `python3` on the workstation.
 
+On Ubuntu/WSL2, install the required packages (already-installed packages are left in place):
+
+```bash
+sudo apt install age openssh-client gzip coreutils python3
+```
+
+`sha256sum` is included in `coreutils`; it is not a separate APT package.
+
 Generate an encryption identity **once on the workstation**, and store its
 private key separately from archives (an offline copy is recommended):
 
