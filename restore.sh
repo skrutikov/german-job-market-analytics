@@ -58,10 +58,14 @@ actual_host="$(remote "hostname")"
   die "Wrong destination: Terraform expects '$state_name'; SSH reports hostname '$actual_host', k3s node '$actual_node'."
 export DR_EXPECTED_NODE_NAME="$state_name"
 export CONFIRM_RESTORE=prod
-[[ -z "$(remote "sudo -n k3s kubectl -n prod get deployments -o name")" &&
-   -z "$(remote "sudo -n k3s kubectl -n prod get pvc -o name")" &&
-   -z "$(remote "sudo -n k3s kubectl -n prod get jobs -o name")" ]] ||
-  die "The target prod namespace already has deployments, PVCs, or jobs. Refusing automatic overwrite; inspect before resuming manually."
+# A failed Kubernetes GET is NOT evidence that a namespace is empty.
+# Fail closed if any read fails, before restoring production data.
+for kind in deployments pvc jobs cronjobs; do
+  existing="$(remote "sudo -n k3s kubectl -n prod get $kind -o name")" ||
+    die "Unable to inspect target $kind; refusing recovery"
+  [[ -z "$existing" ]] ||
+    die "The target prod namespace already has $kind: $existing. Refusing automatic overwrite."
+done
 
 # Select newest COMPLETED prod backup unless a specific path was supplied.
 backup="${2:-${DR_BACKUP_DIR:-}}"
