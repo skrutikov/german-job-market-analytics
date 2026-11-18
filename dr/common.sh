@@ -18,7 +18,18 @@ require_tools() {
 # The operator workstation initiates all connections to the VM. Its local
 # backups survive destruction of the VM and do not require public VM ports.
 remote() {
-  ssh -T -o BatchMode=yes "$DR_SSH_HOST" "$1"
+  local -a opts=(-T -o BatchMode=yes -o ConnectTimeout=15
+                 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+  if [[ -n "${DR_SSH_JUMP:-}" ]]; then
+    [[ "$DR_SSH_JUMP" =~ ^[a-zA-Z0-9_.@-]+$ ]] ||
+      die "DR_SSH_JUMP must be a trusted SSH user@host without options"
+    opts+=(-J "$DR_SSH_JUMP")
+  fi
+  if [[ -n "${DR_SSH_IDENTITY:-}" ]]; then
+    [[ -r "$DR_SSH_IDENTITY" ]] || die "DR_SSH_IDENTITY is not readable"
+    opts+=(-i "$DR_SSH_IDENTITY" -o IdentitiesOnly=yes)
+  fi
+  ssh "${opts[@]}" "$DR_SSH_HOST" "$1"
 }
 
 check_host() {
