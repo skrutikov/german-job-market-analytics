@@ -38,19 +38,35 @@ if [[ "${DR_CONFIRM_MAINTENANCE:-}" != "$ns" ]]; then
 fi
 remote "sudo -n k3s kubectl -n $ns rollout status deployment/postgres --timeout=120s" >/dev/null
 
+# Preflight k3s local-path volumes *before* stopping production workloads.
+# Stream compressed tar from the VM over SSH, without kubectl exec.
+declare -A dr_volume_paths
+for claim in airflow-state etl-data grafana-data; do
+  pv="$(remote "sudo -n k3s kubectl -n $ns get pvc $claim -o jsonpath='{.spec.volumeName}'")"
+  [[ "$pv" =~ ^pvc-[0-9a-f-]+$ ]] ||
+    die "PVC $ns/$claim is not bound to a standard k3s local-path PV"
+  pv_claim="$(remote "sudo -n k3s kubectl get pv $pv -o jsonpath='{.spec.claimRef.namespace}/{.spec.claimRef.name}'")"
+  [[ "$pv_claim" == "$ns/$claim" ]] ||
+    die "PV $pv does not belong to $ns/$claim"
+  path="$(remote "sudo -n k3s kubectl get pv $pv -o jsonpath='{.spec.hostPath.path}'")"
+  expected_path="^/var/lib/rancher/k3s/storage/pvc-[0-9a-f-]+_${ns}_${claim}$"
+  [[ "$path" =~ $expected_path ]] ||
+    die "Unsupported or unsafe local-path directory for $ns/$claim: $path"
+  # Test sudo permission and path without reading any file contents.
+  remote "sudo -n tar -C $path -czf - --files-from /dev/null >/dev/null" ||
+    die "Cannot archive $path using passwordless sudo tar on VM"
+  dr_volume_paths["$claim"]="$path"
+done
+
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 output="$root/$ns/$stamp"
 [[ ! -e "$output" ]] || die "Backup already exists: $output"
 mkdir -p "$output"
-active_helper=false
 complete=false
 cleanup() {
   local rc=$?
   trap - EXIT
   set +e
-  if "$active_helper"; then
-    delete_helper "$ns" || rc=1
-  fi
   end_maintenance "$ns" || rc=1
   if ! "$complete"; then
     rm -f "$output"/*.partial "$output/SHA256SUMS"
@@ -97,12 +113,9 @@ remote "sudo -n k3s kubectl -n $ns exec deployment/postgres -- sh -c 'export PGP
   save_stream "postgres.dump.age"
 
 for claim in airflow-state etl-data grafana-data; do
-  create_helper "$ns" "$claim"
-  active_helper=true
-  remote "sudo -n k3s kubectl -n $ns exec dr-volume-helper -- tar -C /backup -cf - ." |
-    gzip -1 | save_stream "$claim.tar.gz.age"
-  delete_helper "$ns"
-  active_helper=false
+  # Compress on the VM and stream via SSH, bypassing Kubernetes API exec.
+  remote "sudo -n tar -C ${dr_volume_paths[$claim]} -czf - ." |
+    save_stream "$claim.tar.gz.age"
 done
 
 (
