@@ -171,6 +171,36 @@ avoid overlapping the 06:00 ETL, and monitor failures and missing backups.
 No recurring timer is installed by this branch. Periodically repeat a
 full isolated restore drill.
 
+## Finalize a fully copied backup after a verification-only failure
+
+If `dr/backup.sh` has already copied all encrypted files but failed **only
+at the verification step** (for example because an older verifier expected
+five instead of four arguments), the source PVCs do **not** need to be copied
+again. This avoids another Airflow/Grafana maintenance interruption.
+
+The workstation directory must have all five nonempty `.age` archives and
+`backup-metadata.txt`, and **no** `.partial` files. It must have no usable
+`SHA256SUMS` file. After pulling the latest `disaster-recovery` branch,
+run the following **on the trusted workstation**:
+
+```bash
+bash dr/finalize_backup.sh prod k3s-vm \
+  "$HOME/job-market-off-vm-backups/prod/20261118T165839Z"
+```
+
+The script checks the expected files, namespace, SSH host and timestamp,
+recalculates archive checksums, decrypts and parses the Kubernetes Secret,
+verifies PostgreSQL dump format, and fully reads all three compressed tar
+archives. Only upon success does it write `verification.txt` and a final
+`SHA256SUMS`. It does not pause Argo CD, restart Pods or write to the
+production database. Optional `DR_TEST_DB_RESTORE=1` performs a real
+restore in a disposable local Docker container. Failure leaves the
+directory unmarked, and it must not be used as a backup.
+
+This procedure is appropriate only if the data-copy phase finished
+successfully; it cannot repair missing or truncated archived data.
+A full disaster-recovery validation still requires a separate test VM.
+
 ## Troubleshooting interrupted volume transfers
 
 An earlier backup version copied uncompressed PVC tar streams through
