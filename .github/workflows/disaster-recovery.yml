@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Shell syntax
-        run: bash -n dr/common.sh dr/backup.sh dr/restore.sh dr/maintenance.sh dr/verify_backup.sh dr/finalize_backup.sh dr/test_local_path.sh dr/test_verify_args.sh
+        run: bash -n dr/common.sh dr/backup.sh dr/restore.sh dr/maintenance.sh dr/verify_backup.sh dr/finalize_backup.sh dr/test_local_path.sh dr/test_verify_args.sh dr/test_offline_finalize.sh
       - name: Check validated k3s local-path PVC lookup
         run: bash dr/test_local_path.sh
       - name: Test backup verifier arguments
@@ -49,3 +49,8 @@ jobs:
           actual="$(docker exec dr-test psql -U job_market -d job_market -Atqc 'SELECT label FROM dr_probe WHERE id=1')"
           test "$actual" = yesterday
           echo "PostgreSQL backup/restore roundtrip passed"
+      - name: Offline encrypted backup finalization integration test
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y age
+          bash dr/test_offline_finalize.sh /tmp/dr-test.dump
