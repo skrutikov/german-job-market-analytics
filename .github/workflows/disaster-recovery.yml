@@ -55,13 +55,23 @@ jobs:
           sudo apt-get install -y age
           # A tiny dump fits inside a pipe buffer and cannot reproduce an
           # early-closing pg_restore --list causing age to receive SIGPIPE.
+          # The previous workflow step removes its own dr-test container.
+          # Start a fresh isolated fixture in this step.
+          docker run -d --name dr-test-large \
+            -e POSTGRES_USER=job_market -e POSTGRES_DB=job_market \
+            -e POSTGRES_PASSWORD=test-only postgres:17
+          trap 'docker rm -f dr-test-large >/dev/null 2>&1 || true' EXIT
+          for i in {1..60}; do
+            if docker exec dr-test-large pg_isready -U job_market >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
           # Build a >1 MiB real custom-format dump for regression coverage.
-          docker exec dr-test psql -U job_market -d job_market -v ON_ERROR_STOP=1 -c \
+          docker exec dr-test-large psql -U job_market -d job_market -v ON_ERROR_STOP=1 -c \
             "CREATE TABLE dr_payload (id integer PRIMARY KEY, payload text);
              INSERT INTO dr_payload
              SELECT i, md5(i::text) || md5((i+100000)::text)
              FROM generate_series(1, 100000) AS i;"
-          docker exec dr-test pg_dump -U job_market -d job_market -Fc \
+          docker exec dr-test-large pg_dump -U job_market -d job_market -Fc \
             --no-owner --no-privileges > /tmp/dr-large.dump
           test "$(stat -c %s /tmp/dr-large.dump)" -gt 1048576
           bash dr/test_offline_finalize.sh /tmp/dr-large.dump
