@@ -1,15 +1,16 @@
 # Airflow runtime
 FROM apache/airflow:3.4.0
 
-# Install available security updates for the vulnerable Debian package.
+# Kernel UAPI development headers are unnecessary at runtime. Removing them
+# eliminates their CVE exposure rather than merely updating this build-only package.
 # The official Airflow image runs as a non-root user by default.
 USER root
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends --only-upgrade linux-libc-dev \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get purge -y linux-libc-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && ! dpkg-query -W linux-libc-dev 2>/dev/null
 
-# Run application installation as the regular Airflow user.
+# Restore the non-root user before installing the Python dependencies.
 USER airflow
 
 COPY requirements.txt /requirements.txt
