@@ -4,16 +4,28 @@
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 
-(( $# == 4 )) || die "Usage: bash dr/backup.sh dev|prod SSH_HOST AGE_RECIPIENT LOCAL_BACKUP_ROOT"
+(( $# == 2 || $# == 4 )) ||
+  die "Usage: bash dr/backup.sh dev|prod SSH_HOST [AGE_RECIPIENT LOCAL_BACKUP_ROOT]"
 ns="$1"; validate_namespace "$ns"
-check_host "$2"
-recipient="$3"
-root="$4"
-[[ "$recipient" == age1* || "$recipient" == ssh-* ]] ||
-  die "Supply a valid age recipient (age1... or SSH public key)"
-[[ -n "$root" && "$root" == /* ]] || die "Backup root must be an absolute local path"
 require_tools
 command -v python3 >/dev/null || die "python3 is required"
+command -v tar >/dev/null || die "tar is required"
+identity="${DR_IDENTITY:-$HOME/.config/job-market-dr/identity.txt}"
+[[ -f "$identity" ]] || die "Missing age identity: $identity (see runbook)"
+if (( $# == 4 )); then
+  recipient="$3"; root="$4"
+else
+  command -v age-keygen >/dev/null || die "age-keygen is required"
+  recipient="$(age-keygen -y "$identity")"
+  root="${DR_BACKUP_ROOT:-$HOME/job-market-off-vm-backups}"
+fi
+[[ "$recipient" == age1* || "$recipient" == ssh-* ]] ||
+  die "Supply an age recipient (age1... or SSH public key)"
+[[ "$root" == /* ]] || die "Backup root must be an absolute local path"
+printf 'key check' | age -r "$recipient" |
+  age -d -i "$identity" | grep -Fxq 'key check' ||
+  die "Selected age recipient and identity do not match"
+check_host "$2"
 umask 077
 
 # Airflow SQLite and Grafana data must be quiescent for consistent volume copies.
