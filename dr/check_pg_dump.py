@@ -5,6 +5,7 @@ This checks the PGDMP signature and reads all decrypted bytes, allowing
 age to authenticate the full stream. It does NOT validate pg_restore's TOC
 or prove that the dump is restorable.
 """
+
 import sys
 
 
