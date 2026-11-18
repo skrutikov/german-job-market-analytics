@@ -19,9 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Shell syntax
-        run: bash -n dr/common.sh dr/backup.sh dr/restore.sh dr/maintenance.sh dr/verify_backup.sh dr/test_local_path.sh
+        run: bash -n dr/common.sh dr/backup.sh dr/restore.sh dr/maintenance.sh dr/verify_backup.sh dr/finalize_backup.sh dr/test_local_path.sh dr/test_verify_args.sh
       - name: Check validated k3s local-path PVC lookup
         run: bash dr/test_local_path.sh
+      - name: Test backup verifier arguments
+        run: bash dr/test_verify_args.sh
       - name: Test automated backup metadata recording
         run: python3 -m unittest discover -s dr -p 'test_*.py' -v
       - name: PostgreSQL 17 dump and clean restore roundtrip
