@@ -9,7 +9,17 @@ source "$(dirname "$0")/common.sh"
 ns="$1"; validate_namespace "$ns"
 [[ "${CONFIRM_RESTORE:-}" == "$ns" ]] ||
   die "Set CONFIRM_RESTORE=$ns to acknowledge that this overwrites live state"
+# Confirmation of the namespace alone is not enough to protect prod: an
+# accidentally selected production SSH alias could overwrite its live DB.
+# Verify the expected Kubernetes node on the selected target BEFORE any write.
+expected_node="${DR_EXPECTED_NODE_NAME:-}"
+[[ "$expected_node" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] ||
+  die "Set DR_EXPECTED_NODE_NAME to the exact recovery VM Kubernetes node name"
 check_host "$2"
+actual_node="$(remote "sudo -n k3s kubectl get nodes -o jsonpath='{.items[0].metadata.name}'")"
+[[ "$actual_node" == "$expected_node" ]] ||
+  die "Restore destination mismatch: expected node '$expected_node', got '$actual_node'; no restore performed"
+printf 'Restore target verified: %s (SSH: %s, namespace: %s)\n' "$actual_node" "$2" "$ns"
 backup="$3"; identity="$4"; stage="$5"
 [[ "$stage" == prepare || "$stage" == secrets || "$stage" == volumes || "$stage" == postgres ]] || die "Stage must be prepare, secrets, volumes or postgres"
 [[ -d "$backup" && -f "$backup/SHA256SUMS" && -f "$identity" ]] ||
