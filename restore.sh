@@ -118,9 +118,14 @@ fi
 
 export DR_IDENTITY="$identity"
 run_stage() {
-  local stage="$1"
-  echo "=== Recovering stage: $stage ==="
-  timeout --kill-after=15s "${DR_STAGE_TIMEOUT_SECONDS:-1200}" \
+  local stage="$1" max_seconds="${DR_STAGE_TIMEOUT_SECONDS:-1200}"
+  if [[ "$stage" == postgres ]]; then
+    max_seconds="${DR_POSTGRES_RESTORE_TIMEOUT_SECONDS:-240}"
+  fi
+  [[ "$max_seconds" =~ ^[0-9]+$ ]] && (( max_seconds >= 30 )) ||
+    die "Recovery stage timeout must be an integer >= 30 seconds"
+  echo "=== Recovering stage: $stage (timeout: ${max_seconds}s) ==="
+  timeout --kill-after=15s "$max_seconds" \
     bash "$repo_root/dr/restore.sh" prod "$target" "$backup" "$identity" "$stage"
 }
 
