@@ -14,11 +14,7 @@ def deployments():
         "items": [
             {
                 "metadata": {"name": name},
-                "spec": {
-                    "template": {
-                        "spec": {"containers": [{"image": image}]}
-                    }
-                },
+                "spec": {"template": {"spec": {"containers": [{"image": image}]}}},
             }
             for name, image in {
                 "backend": f"{base}:sha-{RELEASE}",
@@ -65,32 +61,23 @@ class MetadataTests(unittest.TestCase):
 
     def test_mismatch_is_rejected(self):
         items = deployments()
-        items["items"][2]["spec"]["template"]["spec"]["containers"][0][
-            "image"
-        ] = (
-            "ghcr.io/skrutikov/german-job-market-analytics-airflow:sha-"
-            + "a" * 40
+        items["items"][2]["spec"]["template"]["spec"]["containers"][0]["image"] = (
+            "ghcr.io/skrutikov/german-job-market-analytics-airflow:sha-" + "a" * 40
         )
         with self.assertRaisesRegex(ValueError, "different release tags"):
-            render_metadata(
-                "prod", "20261118T140000Z", "k3s-vm", items, application()
-            )
+            render_metadata("prod", "20261118T140000Z", "k3s-vm", items, application())
 
     def test_wrong_git_branch_rejected(self):
         app = application()
         app["spec"]["source"]["targetRevision"] = "main"
         with self.assertRaisesRegex(ValueError, "expected branch"):
-            render_metadata(
-                "prod", "20261118T140000Z", "k3s-vm", deployments(), app
-            )
+            render_metadata("prod", "20261118T140000Z", "k3s-vm", deployments(), app)
 
     def test_unknown_git_revision_rejected(self):
         app = application()
         app["status"]["sync"]["revision"] = ""
         with self.assertRaisesRegex(ValueError, "observed Git revision"):
-            render_metadata(
-                "prod", "20261118T140000Z", "k3s-vm", deployments(), app
-            )
+            render_metadata("prod", "20261118T140000Z", "k3s-vm", deployments(), app)
 
 
 if __name__ == "__main__":
