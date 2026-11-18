@@ -164,46 +164,81 @@ The essential distinction:
 
 If `VM.Allocate` is still absent, check the underlying owner permissions with `pveum user permissions root1@pve --path /vms/VM_ID` (substitute the ID). **HTTP 401** indicates an authentication issue (invalid token/secret), while **HTTP 403** generally indicates insufficient authorization.
 
-##### After recreation: verify and refresh the VM's SSH host key
+##### Verify a new or recreated VM's SSH host key and reconnect
 
-A replacement Ubuntu VM generates **new SSH host keys**, even if its VM ID
-and private IP are unchanged. The first `./deploy.sh` attempt may therefore
-print `WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!` and retry SSH
-connections. This is expected after a deliberate rebuild, **but verify the
-new key before trusting it**.
+A newly created or rebuilt Ubuntu VM normally has a **different SSH host
+key**, even if its IP address has been used before. The first SSH attempt may
+show `WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!`. This is a security
+check, not evidence that Terraform failed. **Stop any SSH retry loop with
+Ctrl+C**; the VM already exists and does not need to be recreated.
 
-1. Stop the SSH retry loop (Ctrl+C). Terraform has already created the VM;
-   you do **not** need to destroy or recreate it again.
-2. On the new VM's **trusted Proxmox web console**, display its ED25519 SSH
-   host-key fingerprint:
+The recommended approach is to verify the ED25519 fingerprint **inside the
+guest**, through VM's trusted Proxmox web console (**VM → Console**):
 
-   ```bash
-   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
-   ```
+```bash
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
 
-   Compare the complete `SHA256:...` fingerprint against the one SSH
-   reported when connecting to the recreated VM. If they differ, investigate
-   before proceeding; do not just disable SSH host-key checking.
-3. **Only after the fingerprints match**, on the **local machine** as the
-   same user that runs `./deploy.sh`, remove the obsolete entry:
+Compare its complete `SHA256:...` value with the fingerprint SSH reports on
+your workstation. If they differ, investigate; do not disable host-key
+checking or blindly accept a new key.
 
-   ```bash
-   ssh-keygen -f "$HOME/.ssh/known_hosts" -R 10.10.10.20
-   ```
+**Proxmox-host cross-check when guest console login is unavailable:** Our
+Terraform Cloud-Init configuration supplies the guest's SSH public key but
+does not set a login password, so an interactive Proxmox guest console may
+display a login prompt that you cannot use. From the **Proxmox host shell as
+root**, replace the example VM ID/IP with the intended guest:
 
-   Substitute the current `VM_IP` for the example `10.10.10.20`.
-   In particular, if running from a `root@` shell, this is
-   `/root/.ssh/known_hosts`, not another user's SSH key database.
-4. Run `./deploy.sh` again from the repository root. Terraform reuses the
-   already-managed VM and the script continues with SSH, Cloud-Init, and
-   Ansible. When prompted to trust the new fingerprint, accept it **only if
-   it matches the one independently verified in the VM console**.
+```bash
+VM_ID=101
+VM_IP=10.10.10.21
 
-`No route to host` or `Connection refused` during the first attempts can
-simply mean the new VM is booting; persistent connection failures after the
-host-key update may indicate separate network, SSH server, or jump-host issues.
+qm config "$VM_ID" | grep '^net0:'
+ip neigh show "$VM_IP"
+ssh-keyscan -T 5 -t ed25519 "$VM_IP" 2>/dev/null | ssh-keygen -lf -
+```
 
+Check that the neighbor MAC address (when resolved) agrees with the MAC on
+the VM's `net0` configuration. If no neighbor entry appears, a short ping
+from the Proxmox host may populate it; a stale or incomplete neighbor entry
+is **not** proof of identity. Compare the fingerprint returned by
+`ssh-keyscan` with the one the local SSH client reported. **This is a
+practical lab cross-check from the trusted hypervisor network, not
+cryptographic proof:** `ssh-keyscan` itself does not authenticate the
+server and might see the same impersonator as the workstation. For stronger
+assurance, obtain the fingerprint inside the guest via a trusted console or
+other independently authenticated channel.
 
+**Only after establishing that the new host key belongs to the intended
+VM**, remove the outdated entry on the **local workstation** as the same
+user who runs `deploy.sh`, and reconnect:
+
+```bash
+VM_IP=10.10.10.21
+PROXMOX_HOST=195.154.103.231
+
+ssh-keygen -f "$HOME/.ssh/known_hosts" -R "$VM_IP"
+ssh -J "jumpuser@$PROXMOX_HOST" "group3@$VM_IP"
+```
+
+Substitute your actual VM IP, Proxmox host and Cloud-Init username. For a
+`root@` workstation shell, `$HOME/.ssh/known_hosts` is
+`/root/.ssh/known_hosts`. Accept the SSH key only after checking the
+displayed fingerprint against the previously verified one. In this setup,
+`group3` logs in using the SSH key installed by Cloud-Init, **not a
+password**. Never remove the old entry simply to silence a warning.
+
+When SSH works, exit the guest session and rerun `./deploy.sh` from the
+**same Terraform working directory/state** (with `EXPECTED_VM_ID` set to
+the intended VM ID when it is not 100). Terraform should report no VM
+changes, then continue with Cloud-Init and Ansible. Inspect the plan before
+confirming. If the jump account instead reports
+`channel 0: open failed: administratively prohibited`, check its
+`permitopen` restrictions in the next section; that is a separate issue.
+
+`No route to host` or `Connection refused` during initial attempts can
+also mean the VM is still booting; persistent failures require network/SSH
+diagnosis.
 
 ### Create the SSH jump account
 
@@ -233,7 +268,23 @@ chown jumpuser:jumpuser /home/jumpuser/.ssh/authorized_keys
 chmod 600 /home/jumpuser/.ssh/authorized_keys
 ```
 
-This key allows SSH forwarding to the VM's port 22 without granting root privileges on Proxmox.
+This key allows SSH forwarding to the VM's port 22 without granting root
+privileges on Proxmox.
+
+**Multiple VMs, for example a temporary disaster-recovery guest:** if the
+same workstation key must access two approved guests, add a separate
+`permitopen` option for each exact IP/port **on the same authorized-key
+line**:
+
+```text
+restrict,port-forwarding,permitopen="10.10.10.20:22",permitopen="10.10.10.21:22",command="/bin/false" ssh-ed25519 AAAA... comment
+```
+
+Keep the original `ssh-ed25519 AAAA... comment` public key in place; do not
+replace it with the literal placeholder. This permits forwarding only to
+those two guests, not arbitrary ports. No sshd restart is required after
+editing `authorized_keys`. Remove the second `permitopen` when the
+temporary guest is destroyed.
 
 From the **trusted Proxmox web console**, run:
 
@@ -365,7 +416,16 @@ chmod 600 ~/.ssh/config
 ssh k3s-vm
 ```
 
-The VM's SSH public key was installed by Terraform/Cloud-Init, so no manual `ssh-copy-id` to the new guest is needed. On first connection, verify the guest's SSH host-key fingerprint against a trusted source.
+The guest login public key was installed by Terraform/Cloud-Init, so
+no manual `ssh-copy-id` to the new guest is needed. For a direct interactive
+connection without an alias, use
+`ssh -J jumpuser@PROXMOX_HOST VM_USER@VM_PRIVATE_IP` (replace the placeholders).
+On first connection or after a guest rebuild, verify the guest's SSH
+host-key fingerprint as detailed in **“Verify a new or recreated VM's SSH
+host key and reconnect”** in Section 2B. If an old host key is stored,
+remove the entry with `ssh-keygen -R VM_PRIVATE_IP` **only after** that
+verification. The guest uses SSH-key login; Cloud-Init does not configure
+a console login password.
 
 While logged into the **Ubuntu VM**, verify its address, route, internet access and DNS:
 
