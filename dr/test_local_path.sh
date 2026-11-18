@@ -18,18 +18,18 @@ remote() {
   esac
 }
 
-actual="$(local_mock_pv_path prod etl-data)"
+actual="$(local_pv_path prod etl-data)"
 [[ "$actual" == "$mock_pv_path" ]] || exit 1
 
 mock_pv_path="/tmp/untrusted-volume"
-if (local_mock_pv_path prod etl-data >/dev/null 2>&1); then
+if (local_pv_path prod etl-data >/dev/null 2>&1); then
   echo "Unsafe PV host path was accepted" >&2
   exit 1
 fi
 
 mock_pv_path="/var/lib/rancher/k3s/storage/${mock_pv_id}_prod_etl-data"
 mock_pv_claim="dev/etl-data"
-if (local_mock_pv_path prod etl-data >/dev/null 2>&1); then
+if (local_pv_path prod etl-data >/dev/null 2>&1); then
   echo "A PV bound to a different namespace was accepted" >&2
   exit 1
 fi
