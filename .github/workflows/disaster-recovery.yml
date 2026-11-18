@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Shell syntax
-        run: bash -n deploy.sh destroy.sh restore.sh dr/common.sh dr/backup.sh dr/restore.sh dr/maintenance.sh dr/verify_backup.sh dr/finalize_backup.sh dr/sanitize_overlay.sh dr/test_local_path.sh dr/test_verify_args.sh dr/test_restore_target.sh dr/test_offline_finalize.sh
+        run: bash -n deploy.sh destroy.sh restore.sh dr/common.sh dr/backup.sh dr/restore.sh dr/maintenance.sh dr/verify_backup.sh dr/finalize_backup.sh dr/sanitize_overlay.sh dr/test_local_path.sh dr/test_verify_args.sh dr/test_restore_target.sh dr/test_restore_cli.sh dr/test_offline_finalize.sh
       - name: Check validated k3s local-path PVC lookup
         run: bash dr/test_local_path.sh
       - name: Test backup verifier arguments
@@ -28,6 +28,8 @@ jobs:
         run: bash dr/test_restore_target.sh
       - name: Test automated backup metadata recording
         run: python3 -m unittest discover -s dr -p 'test_*.py' -v
+      - name: Check root restore CLI refuses wrong Terraform state and node
+        run: bash dr/test_restore_cli.sh
       - name: Validate DR root CLI safety guards
         run: |
           if bash restore.sh 100 >/tmp/dr-guard.txt 2>&1; then
