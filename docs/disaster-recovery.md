@@ -57,12 +57,15 @@ age-keygen -o "$HOME/.config/job-market-dr/identity.txt"
 age-keygen -y "$HOME/.config/job-market-dr/identity.txt"
 ```
 
-Copy the printed `age1...` public recipient into your shell:
-
-```bash
-export DR_RECIPIENT='age1REPLACE_WITH_YOUR_PUBLIC_RECIPIENT'
-export DR_BACKUP_ROOT="$HOME/job-market-off-vm-backups"
-```
+The backup script now derives the public recipient automatically from
+`$HOME/.config/job-market-dr/identity.txt` using `age-keygen -y`. It also
+defaults to `$HOME/job-market-off-vm-backups` as the backup location.
+You therefore **do not need to export** `DR_RECIPIENT` or
+`DR_BACKUP_ROOT` for a normal run. To override the defaults, set
+`DR_IDENTITY=/path/to/identity.txt` and/or
+`DR_BACKUP_ROOT=/absolute/destination` in the workstation shell.
+The previous four-argument form remains supported, provided its public
+recipient matches `DR_IDENTITY`.
 
 The operator workstation is **outside the VM** but is not automatically
 a second failure domain. Copy encrypted completed backup directories to
@@ -81,26 +84,24 @@ cannot decrypt the backup.
    and writes `backup-metadata.txt` beside the encrypted backup files.
    For `prod`, Argo CD tracks `production`, which may differ from the
    Git branch checked out on either the workstation or the VM.
-2. **Pause that Argo CD Application's automatic sync/self-healing** in the UI
-   (job-market-dev or job-market-prod), and prevent new ETL runs. Check no
-   active ETL Jobs; Airflow must not launch another DAG. In the VM, quiesce
-   SQLite-writing workloads. This causes downtime for Airflow/Grafana:
-
-   ```bash
-   sudo k3s kubectl -n dev scale deployment/airflow deployment/grafana --replicas=0
-   sudo k3s kubectl -n dev get jobs
-   sudo k3s kubectl -n dev get deployments airflow grafana
-   ```
-
-   Replace `dev` with `prod` as needed. Wait for Pods to terminate.
-   Do **not** turn automatic Argo synchronization back on during copying.
-   The scripts check replicas and active Jobs but **cannot verify** that
-   other manually launched writers are absent. Coordinate with operators.
+2. **Automatic maintenance (with explicit approval):** The script temporarily
+   disables the selected Argo CD Application's automatic sync/self-healing,
+   scales Airflow and Grafana to zero, waits for their Pods to exit, and
+   refuses to start while independent ETL Kubernetes Jobs are active.
+   This causes brief downtime for those services, including production.
+   The script restores their original replica counts and Argo CD setting
+   on successful completion and on ordinary errors/Ctrl+C (best effort).
+   A hard termination (`SIGKILL`), workstation power loss, remote SSH
+   failure, or a concurrent operator change can prevent recovery:
+   verify the workload state and Argo CD auto-sync afterward.
+   In interactive use you must type `YES` to authorize the interruption.
+   For an approved unattended maintenance window, set
+   `DR_CONFIRM_MAINTENANCE=prod` (or `dev`) explicitly.
 
 3. On the **workstation**, execute:
 
    ```bash
-   bash dr/backup.sh dev k3s-vm "$DR_RECIPIENT" "$DR_BACKUP_ROOT"
+   bash dr/backup.sh prod k3s-vm
    ```
 
    The script streams a consistent custom PostgreSQL dump, the namespace
@@ -116,14 +117,14 @@ cannot decrypt the backup.
    the tags disagree or it cannot determine a valid Argo CD revision.
    `SHA256SUMS` covers both the encrypted archives **and metadata text**;
    it is written only after all steps succeed.
-   Backup directory pattern: `$DR_BACKUP_ROOT/dev/YYYYMMDDTHHMMSSZ`.
+   Backup directory pattern: `$HOME/job-market-off-vm-backups/prod/YYYYMMDDTHHMMSSZ`.
 
 4. Check the exit code and archive sizes:
 
    ```bash
-   cd "$DR_BACKUP_ROOT/dev/YYYYMMDDTHHMMSSZ"
+   cd "$HOME/job-market-off-vm-backups/prod/YYYYMMDDTHHMMSSZ"
    sha256sum -c SHA256SUMS
-   cat backup-metadata.txt
+   cat backup-metadata.txt verification.txt
    ls -lh *.age
    ```
 
@@ -131,18 +132,34 @@ cannot decrypt the backup.
    Git. A checksum validates storage integrity, **not** database restorability.
    An incomplete directory without `SHA256SUMS` is not usable.
    Copy the entire completed encrypted directory to second off-VM storage.
-5. Resume Airflow/Grafana replicas to 1 and restore Argo CD auto-sync.
-   Confirm Pods are healthy. If a helper Pod remains from an interrupted
-   backup, inspect it, then delete with
-   `sudo k3s kubectl -n dev delete pod dr-volume-helper`.
-   Never leave an inconsistent, failed copy marked as successful.
+5. The script automatically restores the pre-backup replica counts and
+   Argo CD auto-sync policy. Verify the running workloads and Argo CD status
+   before considering the maintenance complete. The `verification.txt`
+   report is saved beside the backup and included in `SHA256SUMS`.
+   During **every backup**, the script checks encrypted archive integrity,
+   decryptability, PostgreSQL dump format via read-only `pg_restore --list`,
+   and the structure of all three compressed PVC archives.
 
-**Automation:** the shell script can be invoked by a workstation cron/systemd
-timer *only* with a safe coordinated maintenance window that pauses Argo and
-the two writers, resumes them even on failure, verifies backup success, and
-alerts on missing daily backups. The repository does **not** ship such a timer
-or automatically disable GitOps; installing a naive nightly cron would make
-Airflow SQLite backups inconsistent.
+   **Optional real PostgreSQL restore test (recommended for the first backup):**
+   Install Docker on the trusted workstation, then run:
+
+   ```bash
+   DR_TEST_DB_RESTORE=1 bash dr/backup.sh prod k3s-vm
+   ```
+
+   This restores the actual dump into a temporary, network-isolated local
+   PostgreSQL 17 Docker container and verifies the `jobs` table can be
+   queried; the container is removed afterward. It does not touch the
+   production database but temporarily uses local Docker storage containing
+   decrypted data. The command still asks for maintenance approval.
+   Without `DR_TEST_DB_RESTORE=1`, the automatic checks validate archive
+   integrity and format but **not** the ability to restore the entire DB.
+
+**Scheduling:** For a recurring workstation cron/systemd timer, provide
+`DR_CONFIRM_MAINTENANCE=prod` only in an approved maintenance window,
+avoid overlapping the 06:00 ETL, and monitor failures and missing backups.
+No recurring timer is installed by this branch. Periodically repeat a
+full isolated restore drill.
 
 ## Destructive restore drill — fresh VM, not the original production VM
 
@@ -290,6 +307,10 @@ For approval and branch controls, also see
 
 ## Validation and limits
 
+- Each backup automatically verifies encrypted-file checksums, archive
+  decryption, PostgreSQL dump parsing and compressed-tar validity.
+  `DR_TEST_DB_RESTORE=1` additionally checks a true restore to a disposable
+  local PostgreSQL container. Neither check reconstructs a failed VM.
 - The [CI DR smoke test](../.github/workflows/disaster-recovery.yml) uses a
   real PostgreSQL 17 container to create a table, `pg_dump -Fc`, mutate the
   row, `pg_restore --clean --single-transaction`, and assert the old
