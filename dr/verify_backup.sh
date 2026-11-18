@@ -31,6 +31,24 @@ verify_stream() {
     dr-verify "$identity" "$backup/$file" "$@"
 }
 
+# pg_restore --list may stop reading stdin immediately after the TOC.
+# age can then receive EPIPE/SIGPIPE although pg_restore succeeded.
+# Since verify_stream above independently authenticates the COMPLETE
+# decrypted backup, the second TOC-reading pass is judged by the
+# pg_restore exit status, not by age's expected closed-pipe status.
+verify_pg_toc() {
+  local file="$1"; shift
+  timeout --kill-after=5s "$verify_timeout" \
+    bash -c '
+      age -d -i "$1" "$2" | "${@:3}"
+      statuses=("${PIPESTATUS[@]}")
+      if (( statuses[1] != 0 )); then
+        printf "ERROR: pg_restore --list exited with status %s\n" "${statuses[1]}" >&2
+        exit "${statuses[1]}"
+      fi
+    ' dr-pg-toc "$identity" "$backup/$file" "$@"
+}
+
 echo "Validating encrypted Kubernetes Secret and namespace..."
 verify_stream secret.json.age python3 -c '
 import json, sys
@@ -55,7 +73,7 @@ if command -v pg_restore >/dev/null 2>&1; then
   if [[ "$version" =~ PostgreSQL[[:space:]]([0-9]+) ]] &&
      (( ${BASH_REMATCH[1]} >= 17 )); then
     echo "Checking PostgreSQL dump TOC with local $version..."
-    verify_stream postgres.dump.age pg_restore --list >/dev/null
+    verify_pg_toc postgres.dump.age pg_restore --list >/dev/null
     pg_list_checked=true
   fi
 fi
@@ -63,7 +81,7 @@ if ! "$pg_list_checked" && command -v docker >/dev/null 2>&1 &&
    timeout 5s docker info >/dev/null 2>&1 &&
    timeout 5s docker image inspect postgres:17 >/dev/null 2>&1; then
   echo "Checking PostgreSQL dump TOC with local postgres:17 Docker image..."
-  verify_stream postgres.dump.age docker run --rm -i --pull=never \
+  verify_pg_toc postgres.dump.age docker run --rm -i --pull=never \
     --network none postgres:17 pg_restore --list >/dev/null
   pg_list_checked=true
 fi
