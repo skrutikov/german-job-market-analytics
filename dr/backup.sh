@@ -106,10 +106,17 @@ remote "sudo -n k3s kubectl -n $ns exec deployment/postgres -- sh -c 'export PGP
   save_stream "postgres.dump.age"
 
 for claim in airflow-state etl-data grafana-data; do
+  echo "Copying encrypted PVC archive: $claim"
   # Compress on the VM and stream via SSH, bypassing Kubernetes API exec.
   remote "sudo -n tar -C ${dr_volume_paths[$claim]} -czf - ." |
     save_stream "$claim.tar.gz.age"
 done
+
+# Data capture is complete. Resume production *before* time-consuming
+# checksum and archive verification, which operate on saved copies.
+echo "All volumes copied; restoring Airflow/Grafana and Argo CD state..."
+end_maintenance "$ns"
+echo "Production maintenance finished; verifying the saved backup..."
 
 (
   cd "$output"
@@ -118,11 +125,10 @@ done
 # Integrity validation is automatic; real DB restore can be enabled with
 # DR_TEST_DB_RESTORE=1 to use an isolated LOCAL postgres:17 Docker container.
 if bash "$repo_root/dr/verify_backup.sh" "$ns" "$DR_SSH_HOST" "$output" "$identity" \
-    > "$output/verification.txt.partial" 2>&1; then
+    2>&1 | tee "$output/verification.txt.partial"; then
   mv "$output/verification.txt.partial" "$output/verification.txt"
 else
-  cat "$output/verification.txt.partial" >&2
-  die "Archive verification failed"
+  die "Archive verification failed; see the verification output above"
 fi
 (
   cd "$output"
