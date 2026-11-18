@@ -3,6 +3,7 @@
 # Usage: bash dr/backup.sh dev k3s-vm AGE_RECIPIENT /safe/off-vm/backups
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
+source "$(dirname "$0")/maintenance.sh"
 
 (( $# == 2 || $# == 4 )) ||
   die "Usage: bash dr/backup.sh dev|prod SSH_HOST [AGE_RECIPIENT LOCAL_BACKUP_ROOT]"
@@ -28,9 +29,13 @@ printf 'key check' | age -r "$recipient" |
 check_host "$2"
 umask 077
 
-# Airflow SQLite and Grafana data must be quiescent for consistent volume copies.
-# Pause Argo CD automated reconciliation and both Deployments beforehand.
-check_quiesced "$ns"
+# Confirm a short maintenance interruption before stopping production writers.
+if [[ "${DR_CONFIRM_MAINTENANCE:-}" != "$ns" ]]; then
+  [[ -t 0 ]] || die "Set DR_CONFIRM_MAINTENANCE=$ns for noninteractive use"
+  printf 'Pause %s Argo auto-sync and Airflow/Grafana briefly? Type YES: ' "$ns"
+  read -r answer
+  [[ "$answer" == YES ]] || die "Backup cancelled"
+fi
 remote "sudo -n k3s kubectl -n $ns rollout status deployment/postgres --timeout=120s" >/dev/null
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -40,13 +45,26 @@ mkdir -p "$output"
 active_helper=false
 complete=false
 cleanup() {
-  if "$active_helper"; then delete_helper "$ns" || true; fi
+  local rc=$?
+  trap - EXIT
+  set +e
+  if "$active_helper"; then
+    delete_helper "$ns" || rc=1
+  fi
+  end_maintenance "$ns" || rc=1
   if ! "$complete"; then
     rm -f "$output"/*.partial
     printf 'Backup incomplete: %s (do NOT restore this directory)\n' "$output" >&2
   fi
+  exit "$rc"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# Automatically stop SQLite writers, preserving the previous workload
+# replicas and GitOps auto-sync setting for trap-based recovery.
+begin_maintenance "$ns"
 
 save_stream() {
   local name="$1" tmp="$output/$1.partial"
@@ -91,6 +109,20 @@ done
   cd "$output"
   sha256sum *.age backup-metadata.txt > SHA256SUMS
 )
+# Integrity validation is automatic; real DB restore can be enabled with
+# DR_TEST_DB_RESTORE=1 to use an isolated LOCAL postgres:17 Docker container.
+if bash "$repo_root/dr/verify_backup.sh" "$ns" "$DR_SSH_HOST" "$output" "$identity" \
+    > "$output/verification.txt.partial" 2>&1; then
+  mv "$output/verification.txt.partial" "$output/verification.txt"
+else
+  cat "$output/verification.txt.partial" >&2
+  die "Archive verification failed"
+fi
+(
+  cd "$output"
+  sha256sum *.age backup-metadata.txt verification.txt > SHA256SUMS
+  sha256sum -c SHA256SUMS
+)
 cat > "$output/README.txt" <<EOF
 Encrypted disaster-recovery backup
 Namespace: $ns
@@ -99,6 +131,7 @@ Source SSH host: $DR_SSH_HOST
 PostgreSQL: custom pg_dump (PostgreSQL 17)
 Archives: airflow-state, etl-data, grafana-data
 Deployment version and timestamp: backup-metadata.txt
+Verification results: verification.txt
 Verify with: (cd "$output" && sha256sum -c SHA256SUMS)
 Restore using the matching namespace and the age identity.
 These artifacts contain sensitive data; protect encryption keys separately.
