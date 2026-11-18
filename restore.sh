@@ -154,40 +154,7 @@ printf 'Recovered PostgreSQL jobs: %s\n' "$restored_rows"
 # Deployment manifests are read from the BACKUP-RECORDED revision, not from
 # whatever branch the workstation happens to have checked out.
 overlay="$tmp/kubernetes/overlays/prod/kustomization.yaml"
-[[ -f "$overlay" ]] || die "Recorded production revision has no prod overlay"
-[[ "$(grep -c 'newTag: sha-' "$overlay")" == 2 ]] ||
-  die "Expected two immutable SHA-tagged application images"
-sed -i -E "s/newTag: sha-[a-f0-9]{40}/newTag: $release_tag/" "$overlay"
-[[ "$(grep -Fc "newTag: $release_tag" "$overlay")" == 2 ]] ||
-  die "Failed to pin both restored images"
-if grep -q '^patches:' "$overlay"; then
-  die "Production overlay already declares patches; inspect before adding DR isolation patches"
-fi
-cat >> "$overlay" <<'PATCHES'
-# DR-only safety overrides. Never enable automated ingestion or notifications.
-patches:
-  - target:
-      kind: Deployment
-      name: airflow
-    patch: |-
-      - op: replace
-        path: /spec/replicas
-        value: 0
-  - target:
-      kind: Deployment
-      name: alertmanager
-    patch: |-
-      - op: replace
-        path: /spec/replicas
-        value: 0
-  - target:
-      kind: CronJob
-      name: data-update
-    patch: |-
-      - op: replace
-        path: /spec/suspend
-        value: true
-PATCHES
+bash "$repo_root/dr/sanitize_overlay.sh" "$overlay" "$release_tag"
 echo "=== Deploying recovered application (Airflow/alerts disabled) ==="
 remote "sudo -n sysctl -w vm.max_map_count=262144" >/dev/null
 remote_tmp="$(remote 'mktemp -d -t job-market-dr-manifests.XXXXXXXX')"
