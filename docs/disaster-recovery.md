@@ -226,10 +226,15 @@ stage requires `CONFIRM_RESTORE=<namespace>`.
    ```
 
    `prepare` creates the namespace and four PVCs; `secrets` reinstalls the
-   saved PostgreSQL/Grafana credentials; `volumes` copies files into **empty**
-   PVCs. The script refuses to replace nonempty file volumes. All files are
-   checked against SHA-256 digests before any stage. The backing image is
-   pinned to BusyBox 1.36; ensure the cluster can pull it.
+   saved PostgreSQL/Grafana credentials; `volumes` restores files into
+   **empty** PVCs. The script refuses to replace nonempty file volumes.
+   A temporary BusyBox Pod creates/binds each fresh local-path PVC and checks
+   emptiness, then is removed. The actual data transfer/extraction takes
+   place via `sudo -n tar` over SSH directly on the replacement node, not
+   through a long `kubectl exec` stream. This requires the expected k3s
+   local-path provisioner directories and passwordless `sudo tar` access.
+   All files are checked against SHA-256 digests before any stage. The
+   helper image uses BusyBox 1.36; ensure the cluster can pull it.
 
 3. **Start PostgreSQL alone** on the new VM. The checkout must match the
    recorded revision (for prod, the approved `production` revision):
