@@ -64,6 +64,29 @@ def validate() -> None:
     ]
     assert len(image_scans) == 2
     assert image_scans[0]["with"]["scanners"] == "vuln"
+    assert image_scans[0]["with"].get("trivyignores") is None
+    assert image_scans[1]["with"]["trivyignores"] == (
+        "${{ matrix.component == 'airflow' && "
+        "'security/trivy-airflow-exceptions.yaml' || '' }}"
+    )
+    patched_version_step = next(
+        step for step in image_steps
+        if step.get("name") == "Verify patched OS package version in final Airflow image"
+    )
+    assert patched_version_step["if"] == "${{ matrix.component == 'airflow' }}"
+    assert "dpkg --compare-versions" in patched_version_step["run"]
+
+    exceptions = yaml.safe_load(
+        Path("security/trivy-airflow-exceptions.yaml").read_text()
+    )
+    assert exceptions["vulnerabilities"] == [
+        {
+            "id": "CVE-2026-99306",
+            "purls": ["pkg:deb/debian/linux-libc-dev"],
+            "statement": exceptions["vulnerabilities"][0]["statement"],
+            "expired_at": __import__("datetime").date(2026, 12, 19),
+        }
+    ]
     assert ".git" in Path(".dockerignore").read_text()
 
     pipeline = yaml.load(
