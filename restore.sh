@@ -45,7 +45,7 @@ vm_ip="${state_cidr%%/*}"
 [[ "$ssh_pub" == /* ]] || die "Terraform SSH public key must be an absolute path"
 export DR_SSH_IDENTITY="${ssh_pub%.pub}"
 [[ -r "$DR_SSH_IDENTITY" ]] || die "Cannot read the VM SSH private key"
-export DR_SSH_JUMP="${DR_SSH_JUMP:-${JUMP_USER:-jumpuser}${PROXMOX_HOST:-195.154.103.231}}"
+export DR_SSH_JUMP="${DR_SSH_JUMP:-${JUMP_USER:-jumpuser}@${PROXMOX_HOST:-195.154.103.231}}"
 target="$state_user@$vm_ip"
 [[ "$target" != *"10.10.10.20" ]] ||
   die "Refusing to connect to the original production IP address"
