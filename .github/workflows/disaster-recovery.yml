@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Shell syntax
-        run: bash -n dr/common.sh dr/backup.sh dr/restore.sh dr/maintenance.sh dr/verify_backup.sh dr/finalize_backup.sh dr/test_local_path.sh dr/test_verify_args.sh dr/test_restore_target.sh dr/test_offline_finalize.sh
+        run: bash -n deploy.sh destroy.sh restore.sh dr/common.sh dr/backup.sh dr/restore.sh dr/maintenance.sh dr/verify_backup.sh dr/finalize_backup.sh dr/sanitize_overlay.sh dr/test_local_path.sh dr/test_verify_args.sh dr/test_restore_target.sh dr/test_offline_finalize.sh
       - name: Check validated k3s local-path PVC lookup
         run: bash dr/test_local_path.sh
       - name: Test backup verifier arguments
@@ -28,6 +28,47 @@ jobs:
         run: bash dr/test_restore_target.sh
       - name: Test automated backup metadata recording
         run: python3 -m unittest discover -s dr -p 'test_*.py' -v
+      - name: Validate DR root CLI safety guards
+        run: |
+          if bash restore.sh 100 >/tmp/dr-guard.txt 2>&1; then
+            echo "VM 100 must never be a DR target" >&2
+            exit 1
+          fi
+          grep -F "Refusing recovery into VM 100" /tmp/dr-guard.txt
+          if bash deploy.sh not-a-vm >/dev/null 2>&1; then
+            echo "deploy.sh accepted an invalid VM ID" >&2
+            exit 1
+          fi
+          if bash destroy.sh not-a-vm >/dev/null 2>&1; then
+            echo "destroy.sh accepted an invalid VM ID" >&2
+            exit 1
+          fi
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.33.0
+      - name: Verify safe recovery Kustomize rendering
+        run: |
+          set -euo pipefail
+          python3 -m pip install PyYAML==6.0.2
+          mkdir -p /tmp/job-market-dr-render
+          cp -R kubernetes /tmp/job-market-dr-render/
+          overlay=/tmp/job-market-dr-render/kubernetes/overlays/prod/kustomization.yaml
+          tag="$(awk '/newTag: sha-/ { print $2; exit }' "$overlay")"
+          bash dr/sanitize_overlay.sh "$overlay" "$tag"
+          kubectl kustomize /tmp/job-market-dr-render/kubernetes/overlays/prod > /tmp/dr-recovered.yaml
+          python3 - <<'PY'
+          import yaml
+          from pathlib import Path
+          docs = [x for x in yaml.safe_load_all(Path("/tmp/dr-recovered.yaml").read_text()) if x]
+          find = lambda kind, name: next(x for x in docs if x["kind"] == kind and x["metadata"]["name"] == name)
+          assert find("Deployment", "airflow")["spec"]["replicas"] == 0
+          assert find("Deployment", "alertmanager")["spec"]["replicas"] == 0
+          assert find("CronJob", "data-update")["spec"]["suspend"] is True
+          assert find("Deployment", "backend")["spec"]["replicas"] == 1
+          assert find("Deployment", "grafana")["spec"]["replicas"] == 1
+          assert all(x["metadata"].get("namespace") == "prod" for x in docs if x["kind"] == "Deployment")
+          print("Recovered Kustomize resources preserve prod namespace; Airflow/alerts/ETL disabled")
+          PY
       - name: PostgreSQL 17 dump and clean restore roundtrip
         shell: bash
         run: |
