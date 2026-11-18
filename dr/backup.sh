@@ -44,6 +44,20 @@ save_stream() {
 }
 
 printf 'Backing up %s from %s to %s\n' "$ns" "$DR_SSH_HOST" "$output"
+# Record deployed images and the Argo CD Git revision from the live cluster.
+# The VM/workstation Git checkout may be on a different branch.
+repo_root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
+remote "sudo -n k3s kubectl -n $ns get deployments backend frontend airflow -o json" \
+  > "$output/deployments.json.partial"
+remote "sudo -n k3s kubectl -n argocd get application job-market-$ns -o json" \
+  > "$output/argocd.json.partial"
+python3 "$repo_root/dr/record_metadata.py" \
+  --namespace "$ns" --timestamp "$stamp" --ssh-host "$DR_SSH_HOST" \
+  --deployments "$output/deployments.json.partial" \
+  --application "$output/argocd.json.partial" \
+  > "$output/backup-metadata.txt.partial"
+mv "$output/backup-metadata.txt.partial" "$output/backup-metadata.txt"
+rm -f "$output/deployments.json.partial" "$output/argocd.json.partial"
 remote "sudo -n k3s kubectl -n $ns get secret job-market-secrets -o json" |
   python3 -c 'import json,sys; x=json.load(sys.stdin); print(json.dumps({"apiVersion":"v1","kind":"Secret","metadata":{"name":"job-market-secrets","namespace":x["metadata"]["namespace"]},"type":x.get("type","Opaque"),"data":x["data"]}))' |
   save_stream "secret.json.age"
@@ -63,7 +77,7 @@ done
 
 (
   cd "$output"
-  sha256sum *.age > SHA256SUMS
+  sha256sum *.age backup-metadata.txt > SHA256SUMS
 )
 cat > "$output/README.txt" <<EOF
 Encrypted disaster-recovery backup
@@ -72,6 +86,7 @@ Created UTC: $stamp
 Source SSH host: $DR_SSH_HOST
 PostgreSQL: custom pg_dump (PostgreSQL 17)
 Archives: airflow-state, etl-data, grafana-data
+Deployment version and timestamp: backup-metadata.txt
 Verify with: (cd "$output" && sha256sum -c SHA256SUMS)
 Restore using the matching namespace and the age identity.
 These artifacts contain sensitive data; protect encryption keys separately.
