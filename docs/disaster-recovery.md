@@ -288,8 +288,16 @@ The k3s default local-path storage root is expected to be
 **Practice first on a disposable Proxmox VM with a different VM ID/IP.** The
 commands below are an operator runbook, not a claim that a live disaster was
 already simulated. No step in these scripts invokes `terraform destroy`.
-The workstation initiates all recovery actions via SSH, and every restore
-stage requires `CONFIRM_RESTORE=<namespace>`.
+The workstation initiates all recovery actions via SSH. **Every restore
+stage now requires two independent safeguards**:
+`CONFIRM_RESTORE=<namespace>` and
+`DR_EXPECTED_NODE_NAME=<exact recovery Kubernetes node name>`. Before
+modifying the destination, `dr/restore.sh` queries the Kubernetes node
+through the provided SSH alias and refuses a mismatch. This prevents a
+mistyped SSH alias from accidentally restoring production backups into the
+original production VM (for example, `job-market-ubuntu-100` instead of
+`job-market-dr-test`). These checks complement, rather than replace,
+verification of the SSH host key and the isolated Terraform state.
 
 1. **Recreate infrastructure** from the workstation using the documented
    [Terraform/Ansible `./deploy.sh`](../infrastructure/README.md).
@@ -301,6 +309,36 @@ stage requires `CONFIRM_RESTORE=<namespace>`.
    restore into empty volumes. Set up Elasticsearch's required
    `vm.max_map_count=262144` before final deployment.
 
+**Current temporary-VM DR exercise:** The independently managed
+Proxmox VM **101** uses `10.10.10.21`, Kubernetes node
+`job-market-dr-test`, and its own SSH alias `k3s-dr-test`.
+Production remains VM **100** (`10.10.10.20`). The saved backup is from
+the **`prod`** namespace, so use `prod` on the test cluster as well,
+not `dev`. Before running any restore stage on the workstation:
+
+```bash
+# The alias must connect to VM 101, NOT the production VM.
+ssh -T k3s-dr-test \
+  'hostname; sudo -n k3s kubectl get nodes -o wide; sudo -n k3s kubectl -n prod get deployments,cronjobs,pvc'
+
+export BACKUP="$HOME/job-market-off-vm-backups/prod/20261118T165839Z"
+export AGE_IDENTITY="$HOME/.config/job-market-dr/identity.txt"
+export CONFIRM_RESTORE=prod
+export DR_EXPECTED_NODE_NAME=job-market-dr-test
+
+# Start with preparation of empty PVCs only, on the verified replacement VM.
+bash dr/restore.sh prod k3s-dr-test "$BACKUP" "$AGE_IDENTITY" prepare
+```
+
+The named node must be `job-market-dr-test`; the `prod` namespace on
+that VM must have no existing production deployments or data. Do not apply
+the full application overlay, `setup_vm.sh`, or bootstrap automatic
+GitOps/ETL before restoring volumes and PostgreSQL. A restored Airflow
+scheduler may initiate external work; isolate or disable its execution and
+external endpoints before eventually starting it. Monitor the limited
+Proxmox host disk space during the drill and destroy only the separate
+Terraform-managed VM 101 after capturing results.
+
 2. **Prepare fresh PVCs and restore credentials and archives**. On the
    workstation, point `BACKUP` to the **complete local backup directory**:
 
@@ -308,6 +346,7 @@ stage requires `CONFIRM_RESTORE=<namespace>`.
    export BACKUP="$HOME/job-market-off-vm-backups/dev/YYYYMMDDTHHMMSSZ"
    export AGE_IDENTITY="$HOME/.config/job-market-dr/identity.txt"
    export CONFIRM_RESTORE=dev
+   export DR_EXPECTED_NODE_NAME="REPLACEMENT_K3S_NODE_NAME"
 
    bash dr/restore.sh dev k3s-vm "$BACKUP" "$AGE_IDENTITY" prepare
    bash dr/restore.sh dev k3s-vm "$BACKUP" "$AGE_IDENTITY" secrets
