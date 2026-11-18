@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Optional VM ID is an assertion, NEVER a switch to another Terraform state.
+# Use a separate Terraform working directory/state for each managed VM.
+if (( $# > 1 )) || { (( $# == 1 )) && [[ ! "$1" =~ ^[0-9]+$ ]]; }; then
+    echo "Usage: ./destroy.sh [EXPECTED_VM_ID]" >&2
+    exit 2
+fi
+if (( $# == 1 )); then
+    if [[ -n "${EXPECTED_VM_ID:-}" && "$EXPECTED_VM_ID" != "$1" ]]; then
+        echo "ERROR: Command-line VM ID does not match EXPECTED_VM_ID." >&2
+        exit 1
+    fi
+    EXPECTED_VM_ID="$1"
+fi
+
 # Destroy ONLY the Ubuntu VM managed by this Terraform state.
 # An existing Proxmox VM must never be deleted just because its ID was typed
 # into terraform.tfvars; the managed VM ID and configured VM ID must match.
@@ -50,6 +64,11 @@ if [[ ! "$CONFIG_VM_ID" =~ ^[0-9]+$ || ! "$MANAGED_VM_ID" =~ ^[0-9]+$ ||
       "$CONFIG_VM_ID" != "$MANAGED_VM_ID" ]]; then
     echo "ERROR: VM ID mismatch/unsafe value: terraform.tfvars=$CONFIG_VM_ID, state=$MANAGED_VM_ID." >&2
     echo "Refusing to destroy a different VM. Check terraform.tfvars and the state." >&2
+    exit 1
+fi
+
+if [[ -n "${EXPECTED_VM_ID:-}" && "$MANAGED_VM_ID" != "$EXPECTED_VM_ID" ]]; then
+    echo "ERROR: Expected VM $EXPECTED_VM_ID but this Terraform state manages VM $MANAGED_VM_ID." >&2
     exit 1
 fi
 
