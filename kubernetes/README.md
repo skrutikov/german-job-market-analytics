@@ -334,3 +334,7 @@ sudo k3s kubectl kustomize kubernetes/overlays/prod
 
 Keep backups of PostgreSQL, Airflow state, ETL files and credentials:
 local-path PVCs are **not** a disaster-recovery solution.
+
+## Disaster recovery
+
+See [the disaster-recovery runbook](../docs/disaster-recovery.md) for encrypted off-VM PostgreSQL and important PVC/Secret backups, ordered restoration to a new k3s VM, and immutable image rollback. The cluster's local-path PVCs are **not** backups.
