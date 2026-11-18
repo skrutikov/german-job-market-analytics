@@ -40,7 +40,7 @@ def validate() -> None:
         assert all(
             scan["uses"] == "aquasecurity/trivy-action@v0.36.0" for scan in scans
         )
-        assert all(scan["with"]["version"] == "v0.74.0" for scan in scans)
+        assert all(scan["with"]["version"] == "v0.76.2" for scan in scans)
         report, gate = scans
 
         assert report["with"]["format"] == "sarif"
