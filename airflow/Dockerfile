@@ -1,15 +1,15 @@
 # Airflow runtime
 FROM apache/airflow:3.4.0
 
-# Install available security updates for the vulnerable Debian package.
-# The official Airflow image runs as a non-root user by default.
+# The DHI Python runtime requires linux-libc-dev through its libc and Python
+# development packages, so this package cannot be purged independently.
+# Upgrade it to a patched Debian version while preserving those dependencies.
 USER root
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends --only-upgrade linux-libc-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Run application installation as the regular Airflow user.
 USER airflow
 
 COPY requirements.txt /requirements.txt
