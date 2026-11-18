@@ -107,8 +107,15 @@ cannot decrypt the backup.
    The script streams a consistent custom PostgreSQL dump, the namespace
    Secret JSON, and tar/gzip archives of three important PVCs through SSH;
    **age encrypts each stream before writing it on the workstation**.
-   Temporary BusyBox reader Pods mount one PVC at a time and are deleted
-   after each copy. The human-readable, non-secret
+   For the three file PVCs, it discovers the bound Kubernetes PVs and reads
+   the k3s **local-path directories directly on the Ubuntu VM** using
+   `sudo -n tar`. Compression happens on the VM before transmission.
+   This avoids long-running `kubectl exec` API streams, which can reset
+   when copying large ETL files. There is no helper Pod during backup.
+   The script verifies the PV claim association, restrictive expected
+   k3s storage path, and passwordless sudo access **before** maintenance.
+   It intentionally supports this single-node local-path setup, not
+   arbitrary CSI/cloud/network-attached volumes. The human-readable, non-secret
    `backup-metadata.txt` records the namespace, start time, live backend,
    frontend and Airflow image references, matching release tag, GitOps branch,
    Argo CD observed Git revision and last successful sync revision, and sync
@@ -160,6 +167,32 @@ cannot decrypt the backup.
 avoid overlapping the 06:00 ETL, and monitor failures and missing backups.
 No recurring timer is installed by this branch. Periodically repeat a
 full isolated restore drill.
+
+## Troubleshooting interrupted volume transfers
+
+An earlier backup version copied uncompressed PVC tar streams through
+`kubectl exec dr-volume-helper`. Large streams could fail with
+`Copying stdout failed ... 127.0.0.1:6443 ... connection reset by peer`
+because port 6443 is the Kubernetes API server. The updated script copies
+**compressed** files straight from the Ubuntu node via SSH instead, after
+verifying the local-path PV ownership and sudo tar permissions.
+
+After a failure, on the Ubuntu VM verify that `airflow` and `grafana`
+replicas were restored, and check Argo CD:
+
+```bash
+sudo k3s kubectl -n prod get deployments airflow grafana
+sudo k3s kubectl -n argocd get application job-market-prod
+```
+
+On the workstation, an incomplete backup directory **without a valid
+`SHA256SUMS`** must not be used for recovery. Rerun
+`bash dr/backup.sh prod k3s-vm` from an updated
+`disaster-recovery` checkout. It creates a new timestamped directory.
+If the node-path preflight fails, check the PVC/PV storage layout and
+passwordless sudo permissions rather than disabling the safety check.
+The k3s default local-path storage root is expected to be
+`/var/lib/rancher/k3s/storage`.
 
 ## Destructive restore drill — fresh VM, not the original production VM
 
