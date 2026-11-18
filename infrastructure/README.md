@@ -353,6 +353,14 @@ The script uses the current lab's Proxmox API host as a **non-secret default**. 
 PROXMOX_HOST=YOUR_PROXMOX_HOST ./deploy.sh
 ```
 
+For a non-default VM in a **separate Terraform worktree/state**, you may
+also pass the expected VM ID explicitly, for example `./deploy.sh 101`.
+The argument **does not choose or change Terraform state**; it asserts
+that the current `terraform.tfvars` and saved plan target VM 101.
+The equivalent explicit assertion without a parameter is
+`EXPECTED_VM_ID=101 ./deploy.sh`. Never reuse VM 100's Terraform
+state for VM 101.
+
 Paste the **complete API token** from your password manager in `USER@REALM!terraform=SECRET` format (for example `root1@pve!terraform=...`). The prompt hides what you type. The script exports `PROXMOX_VE_API_TOKEN` in its own process, verifies the local CA file and `terraform.tfvars`, runs `terraform init`, `validate`, and saves `vm.tfplan` with `terraform plan`. After reviewing the plan and confirming that it contains no unintended deletions or replacements, type `apply 100` to execute the saved plan for the example VM (or `apply VM_ID` for another ID set via `EXPECTED_VM_ID`). **Once Terraform succeeds**, the script continues to SSH readiness, Cloud-Init, the existing Ansible k3s playbook, and Kubernetes verification. Running `./deploy.sh` does **not** leave credentials in your interactive shell.
 
 **SSH and Ansible prerequisites for the automated phase:** install `ansible` and `openssh-client` locally; create the SSH key from Section 1; configure the restricted `jumpuser` account and permitted forwarding on Proxmox (Section 2). The script automatically connects as `vm_username` to the **IP in `terraform.tfvars`**, via `jumpuser@$PROXMOX_HOST`. It derives the matching local private key by stripping `.pub` from `ssh_public_key_path` and creates a temporary Ansible inventory (not committed to Git). You may override the default jump username with `JUMP_USER=other_user ./deploy.sh`. No `~/.ssh/config` alias is required for the scripted deployment.
@@ -387,6 +395,15 @@ chmod +x destroy.sh
 ```
 
 The script asks for the **full Proxmox API token** (as `deploy.sh` does), verifies that `proxmox_virtual_environment_vm.k3s[0]` is present in the Terraform state, and checks that its managed VM ID matches `vm_id` in `terraform.tfvars`. It rejects a mismatch. For VM **100**, it additionally requires `ALLOW_DESTROY_VM100=true`. It then prepares a **targeted Terraform destroy plan for that VM**, displays it, and requires the exact confirmation `destroy VM_ID` (for example, `destroy 100`) before applying. You should still review the plan carefully.
+
+For a temporary VM, `./destroy.sh 101` additionally asserts that the
+**current** Terraform state manages VM 101; it is not a universal
+VM deletion command. Do not switch to the original production worktree.
+After destroying VM 101, remove its temporary SSH `permitopen` authorization
+from the jump host. The DR recovery steps themselves can now be driven by
+`./restore.sh 101` from the **same separate worktree**, without cloning
+the repository onto the new VM; see the
+[automated DR runbook](../docs/disaster-recovery.md#automated-vm-id-recovery-recommended-for-temporary-test-vms).
 
 **Important:** `destroy.sh` does **not** search Proxmox for any VM with a matching numeric ID. It can only destroy the VM already managed by your current Terraform state. Do not delete your state to “reset” the project; losing it would prevent Terraform from tracking the existing VM. A VM's disks/data are deleted when it is destroyed. The manually downloaded Cloud Image and NAT networking are left alone. **Deleting a VM can also remove its `/vms/VM_ID` ACL**, so before the next `./deploy.sh`, follow **Section 2B** to verify and restore the VM-specific permission; shared storage/VNet ACLs normally remain unchanged.
 
