@@ -14,8 +14,8 @@ command -v tar >/dev/null || die "tar is required"
 command -v python3 >/dev/null || die "python3 is required"
 command -v timeout >/dev/null || die "timeout is required (coreutils)"
 verify_timeout="${DR_VERIFY_TIMEOUT_SECONDS:-900}"
-[[ "$verify_timeout" =~ ^[0-9]+$ ]] && (( verify_timeout >= 60 )) ||
-  die "DR_VERIFY_TIMEOUT_SECONDS must be an integer >= 60"
+[[ "$verify_timeout" =~ ^[0-9]+$ ]] && (( verify_timeout >= 5 )) ||
+  die "DR_VERIFY_TIMEOUT_SECONDS must be an integer >= 5"
 [[ -d "$backup" && -f "$backup/SHA256SUMS" && -f "$identity" ]] ||
   die "Backup, checksums or private age identity missing"
 script_dir="$(cd -- "$(dirname -- "$0")" && pwd)"
@@ -100,8 +100,8 @@ if [[ "${DR_TEST_DB_RESTORE:-0}" == 1 ]]; then
     sleep 1
   done
   "$ready" || die "Disposable PostgreSQL 17 failed to start"
-  decrypt postgres.dump.age |
-    docker exec -i "$container" pg_restore -U job_market -d job_market \
+  verify_stream postgres.dump.age docker exec -i "$container" \
+    pg_restore -U job_market -d job_market \
       --no-owner --no-privileges --exit-on-error --single-transaction
   rows="$(docker exec "$container" psql -U job_market -d job_market -Atqc \
     'SELECT count(*) FROM jobs')"
