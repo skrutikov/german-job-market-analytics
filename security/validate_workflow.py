@@ -70,8 +70,10 @@ def validate() -> None:
         "'security/trivy-airflow-exceptions.yaml' || '' }}"
     )
     patched_version_step = next(
-        step for step in image_steps
-        if step.get("name") == "Verify patched OS package version in final Airflow image"
+        step
+        for step in image_steps
+        if step.get("name")
+        == "Verify patched OS package version in final Airflow image"
     )
     assert patched_version_step["if"] == "${{ matrix.component == 'airflow' }}"
     assert "dpkg --compare-versions" in patched_version_step["run"]
