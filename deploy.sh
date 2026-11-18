@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Optional VM ID is an assertion, NEVER a switch to another Terraform state.
+# Use a separate Terraform working directory/state for each managed VM.
+if (( $# > 1 )) || { (( $# == 1 )) && [[ ! "$1" =~ ^[0-9]+$ ]]; }; then
+    echo "Usage: ./deploy.sh [EXPECTED_VM_ID]" >&2
+    exit 2
+fi
+if (( $# == 1 )); then
+    if [[ -n "${EXPECTED_VM_ID:-}" && "$EXPECTED_VM_ID" != "$1" ]]; then
+        echo "ERROR: Command-line VM ID does not match EXPECTED_VM_ID." >&2
+        exit 1
+    fi
+    EXPECTED_VM_ID="$1"
+fi
+
 # Provision the Ubuntu VM with Terraform, then install/configure k3s with Ansible.
 # Proxmox bootstrap and the restricted SSH jump account must be prepared first
 # as documented in infrastructure/README.md. App deployment is a later step.
