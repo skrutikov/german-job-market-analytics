@@ -59,20 +59,28 @@ begin_maintenance() {
 
 end_maintenance() {
   local ns="$1" failed=0
-  # Never let a failed command suppress the remaining recovery attempts.
+  # Continue restoring independent resources even if one command fails.
+  # Keep unsuccessful operations marked pending so the EXIT trap can retry.
   if "$maintenance_airflow_changed"; then
-    remote "sudo -n k3s kubectl -n $ns scale deployment/airflow --replicas=$maintenance_restore_airflow" >/dev/null ||
+    if remote "sudo -n k3s kubectl -n $ns scale deployment/airflow --replicas=$maintenance_restore_airflow" >/dev/null; then
+      maintenance_airflow_changed=false
+    else
       failed=1
-    maintenance_airflow_changed=false
+    fi
   fi
   if "$maintenance_grafana_changed"; then
-    remote "sudo -n k3s kubectl -n $ns scale deployment/grafana --replicas=$maintenance_restore_grafana" >/dev/null ||
+    if remote "sudo -n k3s kubectl -n $ns scale deployment/grafana --replicas=$maintenance_restore_grafana" >/dev/null; then
+      maintenance_grafana_changed=false
+    else
       failed=1
-    maintenance_grafana_changed=false
+    fi
   fi
   if [[ -n "$maintenance_restore_auto" ]]; then
-    patch_argo_auto "$ns" "$maintenance_restore_auto" || failed=1
-    maintenance_restore_auto=""
+    if patch_argo_auto "$ns" "$maintenance_restore_auto"; then
+      maintenance_restore_auto=""
+    else
+      failed=1
+    fi
   fi
   if ((failed)); then
     echo "WARNING: Could not fully restore maintenance state; inspect $ns and Argo CD job-market-$ns immediately." >&2
