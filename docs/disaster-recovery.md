@@ -283,6 +283,70 @@ sudo k3s kubectl get pv "$PV" -o jsonpath='{.spec.storageClassName}{"\n"}{.spec.
 The k3s default local-path storage root is expected to be
 `/var/lib/rancher/k3s/storage`.
 
+## Automated VM-ID recovery (recommended for temporary test VMs)
+
+**One command per lifecycle step, from the same VM-specific Terraform working
+directory on the WSL2 workstation:**
+
+```bash
+# A separate Terraform worktree/state was already prepared for VM 101.
+./deploy.sh 101                # Proxmox Terraform + Ansible k3s
+./restore.sh 101               # Restore latest verified prod backup onto VM 101
+./destroy.sh 101               # After checking results; explicit destruction prompt
+```
+
+The **VM-ID argument is a safety assertion, not a lookup or state switch**.
+Every command checks its current Terraform state/configuration; it will not
+take state for VM 100 and silently retarget it to 101. Use the already
+created `~/german-job-market-dr-test` worktree for VM 101, not the
+production checkout. Never copy production `terraform.tfstate` to the DR
+worktree. `restore.sh` refuses VM 100 entirely and checks that the SSH
+destination's hostname and k3s node match Terraform's recorded VM name.
+
+`restore.sh 101` selects the most recent successfully checksummed
+`$HOME/job-market-off-vm-backups/prod/<timestamp>` unless you provide an
+explicit backup directory as its second argument. It **does not require
+cloning Git onto the replacement VM**. It reads the exact production GitOps
+commit recorded in the backup, verifies the production branch ancestry,
+extracts only `kubernetes/` manifests locally using `git archive`, and
+transfers those manifests temporarily to VM 101. It verifies/reuses the
+actual backed-up image tag, restores Secrets and all three file PVCs, starts
+PostgreSQL, restores the database, deploys the remaining Kubernetes
+resources, rebuilds Elasticsearch and checks core application rollouts.
+
+For an **isolated recovery test**, the rendered Kustomize overlay is patched
+to keep **Airflow and Alertmanager at zero replicas**, while the ETL
+CronJob remains suspended. This prevents recovered schedulers/alerting
+from running live activities. Validate saved Airflow state before
+separately enabling its scheduler in a controlled network environment;
+a recovery test that leaves Airflow disabled is **not** proof that its
+scheduler resumed correctly. Argo CD automatic sync is **not bootstrapped**
+by this recovery command. It prints the recovered PostgreSQL row count and
+leaves a reviewable application deployment.
+
+Prerequisites are the prior authorized VM creation, SSH host-key trust,
+permission for the restricted Proxmox jump host to reach the new VM's IP,
+the saved `age` identity and a completed encrypted backup. The normal
+command prompts for the exact confirmation `RESTORE 101`. It uses the
+Cloud-Init SSH account, SSH key, VM address and VM identity from Terraform
+outputs. For the current test, the required setup is only:
+
+```bash
+cd ~/german-job-market-dr-test
+git fetch origin
+git switch --detach origin/disaster-recovery
+bash restore.sh 101
+```
+
+Use `bash restore.sh 101` if its executable bit is not available locally.
+If recovery fails halfway through, **do not simply rerun the full command**
+on already-restored PVCs: it intentionally refuses nonempty/pre-existing
+workloads. Inspect the target and resume the appropriate
+`dr/restore.sh` stage from the manual runbook below, or recreate only
+the disposable test VM using its separate Terraform state.
+Keep the independent encrypted backup and recovery report after destroying
+VM 101. Monitor the shared Proxmox disk capacity throughout the drill.
+
 ## Destructive restore drill — fresh VM, not the original production VM
 
 **Practice first on a disposable Proxmox VM with a different VM ID/IP.** The
