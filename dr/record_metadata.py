@@ -7,7 +7,11 @@ import re
 from pathlib import Path
 
 APP_IMAGE = "ghcr.io/skrutikov/german-job-market-analytics"
-IMAGES = {"backend": APP_IMAGE, "frontend": APP_IMAGE, "airflow": APP_IMAGE + "-airflow"}
+IMAGES = {
+    "backend": APP_IMAGE,
+    "frontend": APP_IMAGE,
+    "airflow": APP_IMAGE + "-airflow",
+}
 RELEASE_TAG = re.compile(r"sha-[0-9a-f]{40}\Z")
 GIT_SHA = re.compile(r"[0-9a-f]{40}\Z")
 
