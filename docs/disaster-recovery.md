@@ -147,8 +147,13 @@ cannot decrypt the backup.
    before considering the maintenance complete. The `verification.txt`
    report is saved beside the backup and included in `SHA256SUMS`.
    During **every backup**, the script checks encrypted archive integrity,
-   decryptability, PostgreSQL dump format via read-only `pg_restore --list`,
-   and the structure of all three compressed PVC archives.
+   decryptability, a PostgreSQL `PGDMP` signature with a complete decrypted
+   stream, and the structure of all three compressed PVC archives. When a
+   **local** PostgreSQL 17+ `pg_restore` or a cached `postgres:17` Docker
+   image is available, it also validates the PostgreSQL table of contents
+   with `pg_restore --list`. Otherwise, the script clearly reports this
+   more limited dump check; run an isolated database restore to establish
+   database restorability. **Verification no longer connects to the VM.**
 
    **Optional real PostgreSQL restore test (recommended for the first backup):**
    Install Docker on the trusted workstation, then run:
@@ -192,15 +197,24 @@ bash dr/finalize_backup.sh prod k3s-vm \
 
 The script checks the expected files, namespace, SSH host and timestamp,
 recalculates archive checksums, decrypts and parses the Kubernetes Secret,
-verifies PostgreSQL dump format, and fully reads all three compressed tar
-archives. **It prints the current verification stage live** while saving
-the same output to `verification.txt.partial`; after success, this becomes
+fully reads the encrypted PostgreSQL dump and checks its `PGDMP` header,
+and fully reads all three compressed tar archives. If a local PostgreSQL
+17+ client or a previously pulled `postgres:17` Docker image is available,
+it also checks the dump's table of contents using `pg_restore --list`.
+**No SSH or live Kubernetes connection is needed.** The source SSH alias
+argument is retained for compatibility and metadata checks only.
+**It prints the current verification stage live** while saving the
+same output to `verification.txt.partial`; after success, this becomes
 `verification.txt`, and `SHA256SUMS` is finalized. It does not pause Argo
 CD, restart Pods or write to the production database.
-`DR_VERIFY_TIMEOUT_SECONDS` (default 900 seconds per long-running
-archive or PostgreSQL format check) bounds verification commands that become
-stuck. Optional `DR_TEST_DB_RESTORE=1` performs a real restore in a
-disposable local Docker container. Failure leaves the directory unmarked,
+`DR_VERIFY_TIMEOUT_SECONDS` defaults to **900 seconds (15 minutes) per
+validation pipeline**, not 900 milliseconds. For troubleshooting, set
+`DR_VERIFY_TIMEOUT_SECONDS=120` to limit each validation pipeline to
+2 minutes (shorter limits may reject legitimate large archives). The timeout
+now covers the entire local decryption-and-check pipeline, rather than only
+a remote SSH subprocess. Optional `DR_TEST_DB_RESTORE=1` performs a real
+restore in a disposable local Docker container. Without it, an archive
+format check is **not proof of database restorability**. Failure leaves the directory unmarked,
 and it must not be used as a backup. An earlier version redirected
 verification output to a file without showing it; in a second terminal,
 run `tail -f /path/to/backup/verification.txt.partial` to inspect progress.
@@ -208,6 +222,30 @@ run `tail -f /path/to/backup/verification.txt.partial` to inspect progress.
 This procedure is appropriate only if the data-copy phase finished
 successfully; it cannot repair missing or truncated archived data.
 A full disaster-recovery validation still requires a separate test VM.
+
+## Troubleshooting an older verification hang
+
+A prior `verify_backup.sh` streamed the encrypted PostgreSQL dump back
+through `ssh ... kubectl exec -i ... pg_restore --list`. On this cluster,
+the Kubernetes API streaming connection may stall. Its 900-second timeout
+applied only to the SSH part of a pipeline; it did not eliminate the
+unnecessary cluster dependency.
+
+The updated verifier validates saved files **entirely on the workstation**.
+If an old finalization process is still stuck, press Ctrl+C, update the
+`disaster-recovery` checkout and retry finalization of the **same**
+incomplete directory:
+
+```bash
+git pull --ff-only
+DR_VERIFY_TIMEOUT_SECONDS=120 bash dr/finalize_backup.sh prod k3s-vm \
+  "$HOME/job-market-off-vm-backups/prod/20261118T165839Z"
+```
+
+Do not run two finalization processes concurrently. If `verification.txt`
+and a complete `SHA256SUMS` already exist, verify their checksums rather
+than running finalization again. Do not repeat production maintenance
+merely to resolve a local archive-verification issue.
 
 ## Troubleshooting interrupted volume transfers
 
