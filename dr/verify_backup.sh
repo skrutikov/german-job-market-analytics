@@ -3,17 +3,29 @@
 # Optional DR_TEST_DB_RESTORE=1 runs an actual restore inside local Docker.
 set -euo pipefail
 source "$(dirname -- "$0")/common.sh"
-(( $# == 5 )) ||
+(( $# == 4 )) ||
   die "Usage: bash dr/verify_backup.sh dev|prod SSH_HOST BACKUP_DIR AGE_IDENTITY"
 ns="$1"; validate_namespace "$ns"
 host="$2"; backup="$3"; identity="$4"
 require_tools
 command -v tar >/dev/null || die "tar is required"
+command -v python3 >/dev/null || die "python3 is required"
 [[ -d "$backup" && -f "$backup/SHA256SUMS" && -f "$identity" ]] ||
   die "Backup, checksums or private age identity missing"
 check_host "$host"
 (cd "$backup" && sha256sum -c SHA256SUMS)
 decrypt() { age -d -i "$identity" "$backup/$1"; }
+
+echo "Validating encrypted Kubernetes Secret and namespace"
+decrypt secret.json.age | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+expected = sys.argv[1]
+assert data.get("kind") == "Secret"
+assert data.get("metadata", {}).get("namespace") == expected
+assert data.get("metadata", {}).get("name") == "job-market-secrets"
+assert isinstance(data.get("data"), dict) and data["data"]
+' "$ns"
 
 echo "Read-only pg_restore listing of decrypted PostgreSQL dump"
 decrypt postgres.dump.age |
