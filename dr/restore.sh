@@ -132,9 +132,10 @@ active_jobs="$(remote "sudo -n k3s kubectl -n $ns get jobs -o json" |
 [[ "$active_jobs" == 0 ]] || die "$active_jobs ETL Jobs are active"
 remote "sudo -n k3s kubectl -n $ns rollout status deployment/postgres --timeout=180s" >/dev/null
 
-# Validate backup format before destructive pg_restore.
-decrypt "postgres.dump.age" |
-  remote "sudo -n k3s kubectl -n $ns exec -i deployment/postgres -- pg_restore --list" >/dev/null
+# Validate the dump and its authenticated age stream LOCALLY before any
+# destructive pg_restore. Do not stream it through kubectl exec merely for
+# --list: that unnecessary API stream has hung on this k3s installation.
+bash "$(dirname -- "$0")/verify_backup.sh" "$ns" "$2" "$backup" "$identity"
 
 decrypt "postgres.dump.age" |
   remote "sudo -n k3s kubectl -n $ns exec -i deployment/postgres -- sh -c 'export PGPASSWORD=\"\$POSTGRES_PASSWORD\"; exec pg_restore -U job_market -d job_market --clean --if-exists --no-owner --no-privileges --exit-on-error --single-transaction'"
