@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 MOCK_SUDO = """#!/usr/bin/env python3
 import json
 import os
@@ -82,7 +82,7 @@ class AirflowScriptTests(unittest.TestCase):
 
     def run_script(self, filename):
         return subprocess.run(
-            ["bash", str(REPO_ROOT / filename), "prod"],
+            ["bash", str(SCRIPTS_DIR / filename), "prod"],
             env=self.environment,
             capture_output=True,
             text=True,

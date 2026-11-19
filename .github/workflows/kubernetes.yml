@@ -45,7 +45,7 @@ jobs:
               assert "PruneLast=true" in app["spec"]["syncPolicy"]["syncOptions"]
           PY
       - name: Test immutable release tag update
-        run: python -m unittest discover -s deployment/scripts -p 'test_*.py' -v
+        run: python -m unittest discover -s deployment/tests -p 'test_*.py' -v
       - name: Validate Grafana performance dashboard
         run: |
           python - <<'PY'
@@ -179,7 +179,7 @@ jobs:
             echo "Main moved since publication. Newer publish will update dev; skipping stale release."
             exit 0
           fi
-          python deployment/scripts/release_images.py set-dev "$RELEASE_SHA"
+          python deployment/scripts/update_and_verify_kustomize_release_image_tags.py set-dev "$RELEASE_SHA"
           kubectl kustomize deployment/kubernetes/overlays/dev > /tmp/job-market-dev.yaml
           python deployment/kubernetes/validate.py /tmp/job-market-dev.yaml dev
           git add deployment/kubernetes/overlays/dev/kustomization.yaml

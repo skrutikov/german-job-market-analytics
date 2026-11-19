@@ -54,7 +54,7 @@ jobs:
             exit 1
           }
           python -m pip install PyYAML==6.0.2
-          python deployment/scripts/release_images.py check-dev "$RELEASE_SHA"
+          python deployment/scripts/update_and_verify_kustomize_release_image_tags.py check-dev "$RELEASE_SHA"
 
   promote:
     needs: verify
@@ -90,7 +90,7 @@ jobs:
           git fetch origin main
           git checkout -B release-candidate origin/main
           # Reject stale or untested release after a long approval wait.
-          python deployment/scripts/release_images.py check-dev "$RELEASE_SHA"
+          python deployment/scripts/update_and_verify_kustomize_release_image_tags.py check-dev "$RELEASE_SHA"
 
           if git ls-remote --exit-code --heads origin production >/dev/null; then
             git fetch origin production:refs/remotes/origin/production
@@ -104,7 +104,7 @@ jobs:
           fi
 
           # Explicitly reject images that were not successfully shipped to dev.
-          python deployment/scripts/release_images.py promote-prod "$RELEASE_SHA"
+          python deployment/scripts/update_and_verify_kustomize_release_image_tags.py promote-prod "$RELEASE_SHA"
           kubectl kustomize deployment/kubernetes/overlays/prod > /tmp/job-market-prod.yaml
           python deployment/kubernetes/validate.py /tmp/job-market-prod.yaml prod
           git add deployment/kubernetes/overlays/prod/kustomization.yaml

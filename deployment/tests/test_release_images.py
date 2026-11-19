@@ -5,7 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from release_images import check, read_tags, set_tags
+from deployment.scripts.update_and_verify_kustomize_release_image_tags import (
+    check,
+    read_tags,
+    set_tags,
+)
 
 BASE = Path(__file__).resolve().parent.parent
 EXISTING_SHA = "f6777a134a2be7273430976cf68b58810340dd62"

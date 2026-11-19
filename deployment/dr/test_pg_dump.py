@@ -3,7 +3,7 @@
 import io
 import unittest
 
-from dr.check_pg_dump import consume_pg_dump
+from deployment.dr.check_pg_dump import consume_pg_dump
 
 
 class PgDumpTests(unittest.TestCase):

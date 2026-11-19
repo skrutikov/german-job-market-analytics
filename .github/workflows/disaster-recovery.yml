@@ -27,7 +27,7 @@ jobs:
       - name: Test restore destination identity safety guard
         run: bash deployment/dr/test_restore_target.sh
       - name: Test automated backup metadata recording
-        run: python3 -m unittest discover -s dr -p 'test_*.py' -v
+        run: python3 -m unittest discover -s deployment/dr -p 'test_*.py' -v
       - name: Check root restore CLI refuses wrong Terraform state and node
         run: bash deployment/dr/test_restore_cli.sh
       - name: Validate DR root CLI safety guards
