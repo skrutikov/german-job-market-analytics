@@ -138,5 +138,5 @@ Airflow 3.4.0 migrates its state, do not rely on an automatic in-place upgrade
 if old Airflow history must be preserved. Our intentionally disposable lab VM
 is rebuilt from scratch using `./destroy.sh` and `./deploy.sh`; the original
 PVCs and Airflow metadata are not restored. The safety and VM rebuild steps
-are in [infrastructure/README.md](../infrastructure/README.md).
+are in [deployment/README.md](../README.md).
 Trivy itself does not add or modify any PVC, Secret, or app credentials.

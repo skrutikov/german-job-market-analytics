@@ -1,6 +1,6 @@
 # Proxmox deployment
 
-**Example VM configuration:** ID `100`, Ubuntu 24.04, IP `10.10.10.20/24`, 4 vCPUs, 16 GiB (16384 MiB) RAM, 30 GiB disk. These values are configured in `infrastructure/terraform/terraform.tfvars.example` and must be available and authorized on the target host before provisioning.
+**Example VM configuration:** ID `100`, Ubuntu 24.04, IP `10.10.10.20/24`, 4 vCPUs, 16 GiB (16384 MiB) RAM, 30 GiB disk. These values are configured in `deployment/terraform/terraform.tfvars.example` and must be available and authorized on the target host before provisioning.
 
 This guide explains how to provision an Ubuntu virtual machine on Proxmox VE using **Terraform** and configure a single-node **k3s** cluster using **Ansible**.
 
@@ -12,8 +12,8 @@ Run Terraform and Ansible from the **local machine**, using a Linux-compatible c
 
 - **One-time Proxmox preparation:** download the Ubuntu Cloud Image, verify the NAT VNet, create the API token, and grant it the shared storage and VNet permissions (Section 2). These actions require authorized Proxmox administration.
 - **Before creating or recreating a VM:** verify and, if necessary, grant that specific VM ID's `/vms/VM_ID` ACL. On this host, destroying a VM has removed its VM-specific ACL; the shared storage/VNet permissions remain (Section 2).
-- **VM + k3s deployment:** from the local machine, configure `infrastructure/terraform/terraform.tfvars`, trust the Proxmox CA and run `./deploy.sh` (Section 3). The script plans/applies Terraform **only after confirmation**, waits for SSH and Cloud-Init, then invokes Ansible to install/configure k3s and verify the node. The restricted `jumpuser` SSH account must already be configured on Proxmox (Section 2).
-- **After deployment:** use the optional SSH alias for interactive access (Section 4), or rerun the Ansible playbook manually for troubleshooting (Section 5). **The application itself is not deployed by `deploy.sh`.** On the new Ubuntu VM, run [`setup_vm.sh`](../kubernetes/README.md#quick-start-setup_vmsh-recommended-for-a-fresh-vm) to clone the repository, configure Elasticsearch, deploy the application and bootstrap Argo CD, then run [`init_airflow.sh`](../kubernetes/README.md#quick-start-init_airflowsh) to trigger the first ETL.
+- **VM + k3s deployment:** from the local machine, configure `deployment/terraform/terraform.tfvars`, trust the Proxmox CA and run `./deploy.sh` (Section 3). The script plans/applies Terraform **only after confirmation**, waits for SSH and Cloud-Init, then invokes Ansible to install/configure k3s and verify the node. The restricted `jumpuser` SSH account must already be configured on Proxmox (Section 2).
+- **After deployment:** use the optional SSH alias for interactive access (Section 4), or rerun the Ansible playbook manually for troubleshooting (Section 5). **The application itself is not deployed by `deployment/scripts/deploy.sh`.** On the new Ubuntu VM, run [`deployment/scripts/setup_vm.sh`](../kubernetes/README.md#quick-start-setup_vmsh-recommended-for-a-fresh-vm) to clone the repository, configure Elasticsearch, deploy the application and bootstrap Argo CD, then run [`deployment/scripts/init_airflow.sh`](../kubernetes/README.md#quick-start-init_airflowsh) to trigger the first ETL.
 
 This guide assumes a Proxmox host is already available; it does not install Proxmox itself. Follow the prerequisites and procedures below before deploying. Never assume the example VM ID, private IP, subnet, VNet or permissions are available on another host. Keep the Terraform state for repeat runs.
 
@@ -65,7 +65,7 @@ On the Proxmox **host** shell, confirm that the image is available:
 pvesm list local --content import
 ```
 
-Set its identifier (the string beginning with `local:import/`) as the value of `cloud_image_file_id` in `infrastructure/terraform/terraform.tfvars`. If the image is **already present**, reuse it instead of downloading again. `qemu-img info` can confirm the QCOW2 format but does not by itself guarantee a complete download; verify the source/checksum when preparing a new image. **Image download happens manually through the Proxmox web interface, not through Terraform.**
+Set its identifier (the string beginning with `local:import/`) as the value of `cloud_image_file_id` in `deployment/terraform/terraform.tfvars`. If the image is **already present**, reuse it instead of downloading again. `qemu-img info` can confirm the QCOW2 format but does not by itself guarantee a complete download; verify the source/checksum when preparing a new image. **Image download happens manually through the Proxmox web interface, not through Terraform.**
 
 ### Configure a private network with NAT
 
@@ -80,7 +80,7 @@ For example, a subnet of `10.50.0.0/24` with gateway `10.50.0.1` can serve a VM 
 
 **SNAT** lets the VM reach the internet through the Proxmox host's outgoing connection. The VM stays on a private IP; inbound access from the local machine uses the SSH jump account configured below.
 
-In `infrastructure/terraform/terraform.tfvars`, these values must match the SDN settings:
+In `deployment/terraform/terraform.tfvars`, these values must match the SDN settings:
 
 ```hcl
 network_bridge = "SDN_VNET"
@@ -92,11 +92,11 @@ Replace `SDN_VNET` and the example addresses with the actual VNet ID, chosen VM 
 
 ### Create a Proxmox API token and permissions
 
-**Two distinct kinds of permission are needed:** shared infrastructure permissions are configured once, while the permission for the **specific VM ID must be checked before creating or recreating that VM**. These are administrator tasks on the **Proxmox host**, not tasks performed by `deploy.sh`.
+**Two distinct kinds of permission are needed:** shared infrastructure permissions are configured once, while the permission for the **specific VM ID must be checked before creating or recreating that VM**. These are administrator tasks on the **Proxmox host**, not tasks performed by `deployment/scripts/deploy.sh`.
 
 #### A. One-time setup: API token and shared storage/VNet permissions
 
-In **Datacenter → Permissions → API Tokens**, create a token (for example `terraform` owned by `root1@pve`) with **Privilege Separation** enabled. Save the token secret securely. The token ID `root1@pve!terraform` identifies the token; `deploy.sh` prompts for the complete `ID=secret` value. An API token is not an SSH login.
+In **Datacenter → Permissions → API Tokens**, create a token (for example `terraform` owned by `root1@pve`) with **Privilege Separation** enabled. Save the token secret securely. The token ID `root1@pve!terraform` identifies the token; `deployment/scripts/deploy.sh` prompts for the complete `ID=secret` value. An API token is not an SSH login.
 
 For this bootcamp host, the shared resources and privileges are:
 
@@ -160,7 +160,7 @@ Run the first command again to verify `VM.Allocate` (and the `VM.Config.*` privi
 The essential distinction:
 
 - **One-time host setup:** create the token and configure permissions for shared storage and VNet (Section A).
-- **Per-VM provisioning/reprovisioning:** check `/vms/VM_ID` and grant `PVEVMAdmin` there when missing (Section B). Recheck after `destroy.sh`, because VM deletion can remove this ACL.
+- **Per-VM provisioning/reprovisioning:** check `/vms/VM_ID` and grant `PVEVMAdmin` there when missing (Section B). Recheck after `deployment/scripts/destroy.sh`, because VM deletion can remove this ACL.
 
 If `VM.Allocate` is still absent, check the underlying owner permissions with `pveum user permissions root1@pve --path /vms/VM_ID` (substitute the ID). **HTTP 401** indicates an authentication issue (invalid token/secret), while **HTTP 403** generally indicates insufficient authorization.
 
@@ -211,7 +211,7 @@ other independently authenticated channel.
 
 **Only after establishing that the new host key belongs to the intended
 VM**, remove the outdated entry on the **local workstation** as the same
-user who runs `deploy.sh`, and reconnect:
+user who runs `deployment/scripts/deploy.sh`, and reconnect:
 
 ```bash
 VM_IP=10.10.10.21
@@ -321,13 +321,13 @@ nano ~/.config/proxmox/pve-root-ca.pem
 
 This establishes TLS trust for Terraform's API connection. Verify the certificate through the trusted Proxmox console; do not disable TLS verification.
 
-## 3. Configure and run Terraform with `deploy.sh`
+## 3. Configure and run Terraform with `deployment/scripts/deploy.sh`
 
 On your **local Ubuntu/Linux machine**, from the repository root:
 
 ```bash
-test -f infrastructure/terraform/terraform.tfvars || cp infrastructure/terraform/terraform.tfvars.example infrastructure/terraform/terraform.tfvars
-nano infrastructure/terraform/terraform.tfvars
+test -f deployment/terraform/terraform.tfvars || cp deployment/terraform/terraform.tfvars.example deployment/terraform/terraform.tfvars
+nano deployment/terraform/terraform.tfvars
 ```
 
 Set `create_vm = true` only once you've obtained approval for an **unused** VM ID and static IP. Confirm the Proxmox node name, `datastore_id`, `network_bridge`, `vm_ipv4_cidr`, `vm_gateway`, `vm_username`, VM sizing and SSH public-key path. In the example environment, `nat0` uses zone `studnat`; the gateway `10.10.10.1` is an **environment-specific value**, not a Proxmox default. The Ubuntu user is created by Cloud-Init and is independent of the Proxmox API user.
@@ -340,10 +340,10 @@ cloud_image_file_id = "local:import/job-market-noble-server-cloudimg-amd64.qcow2
 
 There is no `download_cloud_image` switch: Terraform only provisions the VM from the manually staged Cloud Image. If your local, Git-ignored `terraform.tfvars` still contains `download_cloud_image` or `cloud_image_url` from an older configuration, remove those lines.
 
-Before running Terraform, complete **Section 2B** on the Proxmox host: the token must have `VM.Allocate` on the chosen VM ID (including after a previous `destroy.sh`). Make sure the Proxmox CA file from Section 2 exists at `~/.config/proxmox/pve-root-ca.pem`. Then run:
+Before running Terraform, complete **Section 2B** on the Proxmox host: the token must have `VM.Allocate` on the chosen VM ID (including after a previous `deployment/scripts/destroy.sh`). Make sure the Proxmox CA file from Section 2 exists at `~/.config/proxmox/pve-root-ca.pem`. Then run:
 
 ```bash
-chmod +x deploy.sh
+chmod +x deployment/scripts/deploy.sh
 ./deploy.sh
 ```
 
@@ -371,9 +371,9 @@ Paste the **complete API token** from your password manager in `USER@REALM!terra
 
 **If SSH or Ansible fails after Terraform succeeds:** the VM still exists and remains managed by Terraform; the script does not roll back the VM. Fix the jump-account configuration, SSH key, network, host-key trust or sudo access and rerun `./deploy.sh` using the same state. The playbook is designed to be rerun and skips fresh installation when k3s is already present. Ansible requires the Ubuntu Cloud-Init account to have `sudo` privileges.
 
-Formatting is optional: run `terraform -chdir=infrastructure/terraform fmt` from the repository root if you want to normalize Terraform files. A formatting difference in `terraform.tfvars` will not block `deploy.sh`; configuration validation still runs.
+Formatting is optional: run `terraform -chdir=deployment/terraform fmt` from the repository root if you want to normalize Terraform files. A formatting difference in `terraform.tfvars` will not block `deployment/scripts/deploy.sh`; configuration validation still runs.
 
-**Avoid duplicated configuration:** `terraform.tfvars` is now the single source of truth for `vm_id`, `vm_ipv4_cidr` and other Terraform inputs; `deploy.sh` intentionally does not override them with `-var`. Re-running with the same local Terraform state should produce no changes. **Back up the state** securely and do not commit `terraform.tfvars`, `vm.tfplan`, the state or credentials. Never set `create_vm = false` to “skip provisioning”: Terraform would plan to destroy an already-managed VM. Review destructive changes before approving.
+**Avoid duplicated configuration:** `terraform.tfvars` is now the single source of truth for `vm_id`, `vm_ipv4_cidr` and other Terraform inputs; `deployment/scripts/deploy.sh` intentionally does not override them with `-var`. Re-running with the same local Terraform state should produce no changes. **Back up the state** securely and do not commit `terraform.tfvars`, `vm.tfplan`, the state or credentials. Never set `create_vm = false` to “skip provisioning”: Terraform would plan to destroy an already-managed VM. Review destructive changes before approving.
 
 Common errors:
 
@@ -385,16 +385,16 @@ Common errors:
 
 The current Ubuntu URL uses `noble/current`, which can change; **for bit-for-bit reproducibility**, pin a dated/released image and verify its checksum before distributing the environment setup.
 
-### Destroy a Terraform-managed VM with `destroy.sh`
+### Destroy a Terraform-managed VM with `deployment/scripts/destroy.sh`
 
-To intentionally remove a Terraform-managed VM, run the following **from the repository root** on the same local machine and with the same `infrastructure/terraform/terraform.tfstate` used by `deploy.sh`:
+To intentionally remove a Terraform-managed VM, run the following **from the repository root** on the same local machine and with the same `deployment/terraform/terraform.tfstate` used by `deployment/scripts/deploy.sh`:
 
 ```bash
-chmod +x destroy.sh
+chmod +x deployment/scripts/destroy.sh
 ./destroy.sh
 ```
 
-The script asks for the **full Proxmox API token** (as `deploy.sh` does), verifies that `proxmox_virtual_environment_vm.k3s[0]` is present in the Terraform state, and checks that its managed VM ID matches `vm_id` in `terraform.tfvars`. It rejects a mismatch. For VM **100**, it additionally requires `ALLOW_DESTROY_VM100=true`. It then prepares a **targeted Terraform destroy plan for that VM**, displays it, and requires the exact confirmation `destroy VM_ID` (for example, `destroy 100`) before applying. You should still review the plan carefully.
+The script asks for the **full Proxmox API token** (as `deployment/scripts/deploy.sh` does), verifies that `proxmox_virtual_environment_vm.k3s[0]` is present in the Terraform state, and checks that its managed VM ID matches `vm_id` in `terraform.tfvars`. It rejects a mismatch. For VM **100**, it additionally requires `ALLOW_DESTROY_VM100=true`. It then prepares a **targeted Terraform destroy plan for that VM**, displays it, and requires the exact confirmation `destroy VM_ID` (for example, `destroy 100`) before applying. You should still review the plan carefully.
 
 For a temporary VM, `./destroy.sh 101` additionally asserts that the
 **current** Terraform state manages VM 101; it is not a universal
@@ -405,13 +405,13 @@ from the jump host. The DR recovery steps themselves can now be driven by
 the repository onto the new VM; see the
 [automated DR runbook](../docs/disaster-recovery.md#automated-vm-id-recovery-recommended-for-temporary-test-vms).
 
-**Important:** `destroy.sh` does **not** search Proxmox for any VM with a matching numeric ID. It can only destroy the VM already managed by your current Terraform state. Do not delete your state to “reset” the project; losing it would prevent Terraform from tracking the existing VM. A VM's disks/data are deleted when it is destroyed. The manually downloaded Cloud Image and NAT networking are left alone. **Deleting a VM can also remove its `/vms/VM_ID` ACL**, so before the next `./deploy.sh`, follow **Section 2B** to verify and restore the VM-specific permission; shared storage/VNet ACLs normally remain unchanged.
+**Important:** `deployment/scripts/destroy.sh` does **not** search Proxmox for any VM with a matching numeric ID. It can only destroy the VM already managed by your current Terraform state. Do not delete your state to “reset” the project; losing it would prevent Terraform from tracking the existing VM. A VM's disks/data are deleted when it is destroyed. The manually downloaded Cloud Image and NAT networking are left alone. **Deleting a VM can also remove its `/vms/VM_ID` ACL**, so before the next `./deploy.sh`, follow **Section 2B** to verify and restore the VM-specific permission; shared storage/VNet ACLs normally remain unchanged.
 
-Do not set `create_vm = false` as a substitute for `destroy.sh`: that could make a later `./deploy.sh` plan destruction without the extra VM-ID confirmation.
+Do not set `create_vm = false` as a substitute for `deployment/scripts/destroy.sh`: that could make a later `./deploy.sh` plan destruction without the extra VM-ID confirmation.
 
 ## 4. Optional: SSH alias for interactive VM access
 
-`deploy.sh` uses SSH with `-J jumpuser@PROXMOX_HOST` directly, so **you do not need to edit `~/.ssh/config` for automated deployment**. To connect interactively using the shorter `ssh k3s-vm` command, edit `~/.ssh/config` on the local machine and replace the host, guest IP and username:
+`deployment/scripts/deploy.sh` uses SSH with `-J jumpuser@PROXMOX_HOST` directly, so **you do not need to edit `~/.ssh/config` for automated deployment**. To connect interactively using the shorter `ssh k3s-vm` command, edit `~/.ssh/config` on the local machine and replace the host, guest IP and username:
 
 ```sshconfig
 Host proxmox-jump
@@ -459,14 +459,14 @@ The VM should show its configured private IP, a default route via the subnet gat
 
 Exit the guest session to return to the local Linux shell.
 
-## 5. k3s with Ansible (run automatically by `deploy.sh`)
+## 5. k3s with Ansible (run automatically by `deployment/scripts/deploy.sh`)
 
-`deploy.sh` now runs the existing `infrastructure/ansible/install-k3s.yml` playbook after SSH and Cloud-Init are ready. It creates a temporary inventory from Terraform outputs, runs an Ansible ping, installs/configures k3s, then verifies the node and namespaces. No separate inventory file is needed for the automatic deployment.
+`deployment/scripts/deploy.sh` now runs the existing `deployment/ansible/install-k3s.yml` playbook after SSH and Cloud-Init are ready. It creates a temporary inventory from Terraform outputs, runs an Ansible ping, installs/configures k3s, then verifies the node and namespaces. No separate inventory file is needed for the automatic deployment.
 
 For **manual troubleshooting or replaying the playbook**, first configure the optional `k3s-vm` SSH alias in Section 4. Then, from the **repository root** on the local machine:
 
 ```bash
-cd infrastructure/ansible
+cd deployment/ansible
 cat > inventory.ini <<'EOF'
 [k3s_servers]
 k3s-vm ansible_connection=ssh ansible_python_interpreter=/usr/bin/python3

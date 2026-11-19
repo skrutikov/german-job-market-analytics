@@ -27,7 +27,7 @@ The application currently retains **7 days** of Prometheus data, so a 24-hour ro
 
 ## Recording rules and alerts
 
-All rules are defined in `kubernetes/base/config/alerts.yml`, packaged into the generated `prometheus-config` ConfigMap, and evaluated by Prometheus every minute.
+All rules are defined in `deployment/kubernetes/base/config/alerts.yml`, packaged into the generated `prometheus-config` ConfigMap, and evaluated by Prometheus every minute.
 
 | Alert | Condition | Hold period | Severity |
 |---|---|---|---|
@@ -99,7 +99,7 @@ up{job=~"job-market-backend|kubernetes-cadvisor|kube-state-metrics"}
 The `up` series should each be `1`. The SLO ratios may initially be absent or NaN until searches have been measured. Optionally run the existing **k6 ramp** profile from the local machine to generate more than 100 real requests:
 
 ```bash
-k6 run -e BASE_URL=http://127.0.0.1:8088 -e PROFILE=ramp performance/k6/job-search.js
+k6 run -e BASE_URL=http://127.0.0.1:8088 -e PROFILE=ramp deployment/performance/k6/job-search.js
 ```
 
 Avoid testing concurrently with ETL. The k6 **smoke** profile (five requests) is useful for checking the endpoint but insufficient to test SLO alert volumes.
@@ -142,9 +142,9 @@ If the VM cannot reach the Service ClusterIP, inspect cluster networking first; 
 CI uses pinned Prometheus and Alertmanager images to run:
 
 ```bash
-promtool check rules kubernetes/base/config/alerts.yml
-promtool test rules kubernetes/tests/slo-alerts.test.yml
-amtool check-config kubernetes/base/config/alertmanager.yml
+promtool check rules deployment/kubernetes/base/config/alerts.yml
+promtool test rules deployment/kubernetes/tests/slo-alerts.test.yml
+amtool check-config deployment/kubernetes/base/config/alertmanager.yml
 ```
 
 The synthetic tests cover healthy searches, high failures, high latency, low-traffic suppression, unavailable/missing metrics and the disposable alert signal. They do not depend on a live cluster.
@@ -157,7 +157,7 @@ sudo k3s kubectl -n argocd patch application job-market-dev \
 sudo k3s kubectl -n argocd get application job-market-dev
 ```
 
-No `git pull` on the VM is required for Argo CD to fetch manifests from GitHub. If `argocd/configure-sync.sh` is needed later for PVC protection, update the local checkout to `main` first.
+No `git pull` on the VM is required for Argo CD to fetch manifests from GitHub. If `deployment/argocd/configure-sync.sh` is needed later for PVC protection, update the local checkout to `main` first.
 
 ## Next steps
 

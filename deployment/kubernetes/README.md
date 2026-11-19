@@ -1,6 +1,6 @@
 # Kubernetes application deployment
 
-Kustomize deploys Job Market Analytics to the single-node k3s cluster provisioned by [Terraform and Ansible](../infrastructure/README.md). The Docker Compose deployment is unchanged. For GitOps synchronization, see the [Argo CD guide](../argocd/README.md). For Prometheus container monitoring and k6 load tests, see the [performance guide](../performance/README.md). For repository and container vulnerability scanning in CI, see the [Trivy security guide](../security/README.md).
+Kustomize deploys Job Market Analytics to the single-node k3s cluster provisioned by [Terraform and Ansible](../README.md). The Docker Compose deployment is unchanged. For GitOps synchronization, see the [Argo CD guide](../argocd/README.md). For Prometheus container monitoring and k6 load tests, see the [performance guide](../performance/README.md). For repository and container vulnerability scanning in CI, see the [Trivy security guide](../security/README.md).
 
 ## Components
 
@@ -19,7 +19,7 @@ Kustomize deploys Job Market Analytics to the single-node k3s cluster provisione
 | Grafana | Deployment + Service + persistent volume claim |
 | kube-state-metrics | Deployment + Service; namespace-scoped Pod restart/health metrics |
 
-The overlays in `kubernetes/overlays/dev` and `kubernetes/overlays/prod` isolate the environments into their respective namespaces. Each environment uses its own Services, PVCs and credentials.
+The overlays in `deployment/kubernetes/overlays/dev` and `deployment/kubernetes/overlays/prod` isolate the environments into their respective namespaces. Each environment uses its own Services, PVCs and credentials.
 
 ### Environment-specific configuration
 
@@ -91,7 +91,7 @@ complete before verifying or promoting a release.
 
 ## 2. Prepare the Proxmox VM
 
-### Quick start: `setup_vm.sh` (recommended for a fresh VM)
+### Quick start: `deployment/scripts/setup_vm.sh` (recommended for a fresh VM)
 
 After `./deploy.sh` on the **local machine** has provisioned the VM and
 installed k3s with Ansible, SSH into the **Ubuntu VM as the regular user**
@@ -109,7 +109,7 @@ bash /tmp/job-market-setup-vm.sh
 Inspect the downloaded script before executing it if desired. It checks k3s,
 installs `git` and `openssl`, clones or fast-forward-updates the `main`
 checkout at `~/german-job-market-analytics`, persists Elasticsearch's
-`vm.max_map_count`, runs `kubernetes/deploy.sh dev`, bootstraps Argo CD
+`vm.max_map_count`, runs `deployment/kubernetes/deploy.sh dev`, bootstraps Argo CD
 tracking `main`, and displays node/Pod/Application status. It does
 **not** modify the Proxmox VM or reinstall k3s.
 
@@ -117,7 +117,7 @@ The script is safe to rerun on the same Git branch: it will not delete the
 repository or overwrite tracked local edits, and existing Kubernetes Secrets
 and PVCs are retained. Re-running the deployment may still reconcile/restart
 workloads as needed. It rejects an unrelated Git origin or existing
-non-repository directory. A separate `init_airflow.sh` command starts the
+non-repository directory. A separate `deployment/scripts/init_airflow.sh` command starts the
 first ETL; it is **not** triggered automatically by VM setup.
 
 For a new lab environment, once this completes, skip directly to
@@ -155,7 +155,7 @@ k3s normally includes the `local-path` default StorageClass. PVCs are stored on 
 Inside the repository on the VM:
 
 ```bash
-sudo bash kubernetes/deploy.sh dev
+sudo bash deployment/kubernetes/deploy.sh dev
 ```
 
 The script generates a namespace-scoped `job-market-secrets` Secret once, containing random PostgreSQL and Grafana credentials (with the database connection URL). It applies the dev overlay and waits for the ten Deployments.
@@ -163,8 +163,8 @@ The script generates a namespace-scoped `job-market-secrets` Secret once, contai
 Equivalent manual steps:
 
 ```bash
-sudo bash kubernetes/bootstrap-secrets.sh dev
-sudo k3s kubectl apply -k kubernetes/overlays/dev
+sudo bash deployment/kubernetes/bootstrap-secrets.sh dev
+sudo k3s kubectl apply -k deployment/kubernetes/overlays/dev
 sudo k3s kubectl -n dev get deployments,pods,services,pvc,ingress
 ```
 
@@ -181,7 +181,7 @@ sudo k3s kubectl -n dev get events --sort-by=.lastTimestamp
 
 ## 4. Access from the local machine (one background SSH tunnel)
 
-The cluster runs on a Proxmox VM with a private IP address. Run the root-level **`kubernetes_start.sh`** utility from the **local machine**, using a Bash-compatible shell—not from the Proxmox VM or the Proxmox host. Configure the `k3s-vm` SSH alias as shown in [the infrastructure SSH instructions](../infrastructure/README.md#4-optional-ssh-alias-for-interactive-vm-access), so SSH reaches the Proxmox VM through the Proxmox host's restricted jump account. The local machine needs OpenSSH, Python 3, and curl.
+The cluster runs on a Proxmox VM with a private IP address. Run the root-level **`deployment/scripts/kubernetes_start.sh`** utility from the **local machine**, using a Bash-compatible shell—not from the Proxmox VM or the Proxmox host. Configure the `k3s-vm` SSH alias as shown in [the infrastructure SSH instructions](../README.md#4-optional-ssh-alias-for-interactive-vm-access), so SSH reaches the Proxmox VM through the Proxmox host's restricted jump account. The local machine needs OpenSSH, Python 3, and curl.
 
 ```bash
 cd ~/german-job-market-analytics
@@ -192,7 +192,7 @@ git pull
 ./kubernetes_start.sh dev
 ```
 
-The script discovers the Kubernetes Service ClusterIPs through SSH, establishes **one detached SSH tunnel** with several localhost-only port forwards, verifies the Nginx endpoint, and prints URLs and the current Grafana, Airflow and PostgreSQL credentials. The script **does not deploy, restart, or expose any pods publicly**; the cluster must already have been deployed by `kubernetes/deploy.sh` on the Proxmox VM.
+The script discovers the Kubernetes Service ClusterIPs through SSH, establishes **one detached SSH tunnel** with several localhost-only port forwards, verifies the Nginx endpoint, and prints URLs and the current Grafana, Airflow and PostgreSQL credentials. The script **does not deploy, restart, or expose any pods publicly**; the cluster must already have been deployed by `deployment/kubernetes/deploy.sh` on the Proxmox VM.
 
 | Service | Local URL for dev |
 |---|---|
@@ -239,19 +239,19 @@ Then from a separate terminal on the **local machine**:
 ssh -N -L 8088:127.0.0.1:8088 k3s-vm
 ```
 
-The manual forwarding processes must remain running. This fallback is separate from `kubernetes_start.sh`.
+The manual forwarding processes must remain running. This fallback is separate from `deployment/scripts/kubernetes_start.sh`.
 
 The optional Traefik Ingress hosts (`job-market-dev.test` and `job-market.test`) are example names, not public DNS records; they require suitable routing and DNS. After installing Argo CD, the local access script also provides its HTTPS UI; see the [Argo CD access guide](../argocd/README.md#access-from-the-local-machine).
 
 ## 5. Run ETL
 
-### Quick start: `init_airflow.sh`
+### Quick start: `deployment/scripts/init_airflow.sh`
 
-On the **Ubuntu VM**, after `setup_vm.sh` or manual deployment has succeeded:
+On the **Ubuntu VM**, after `deployment/scripts/setup_vm.sh` or manual deployment has succeeded:
 
 ```bash
 cd ~/german-job-market-analytics
-bash init_airflow.sh
+bash deployment/scripts/init_airflow.sh
 ```
 
 The script checks the Airflow deployment and DAG, enables scheduling if
@@ -261,7 +261,7 @@ manual trigger. If the DAG was initially paused, it unpauses scheduling but
 does **not** also create a manual run: the scheduler may immediately create
 a scheduled run itself. This avoids the double initialization we saw in prod.
 
-If the DAG was already unpaused and has no active runs, `init_airflow.sh`
+If the DAG was already unpaused and has no active runs, `deployment/scripts/init_airflow.sh`
 triggers one manual run. The script checks the complete DAG-run state list
 using Airflow 3.4's structured JSON output (rather than only the five most
 recent rows). If a status command or JSON parsing fails, it **refuses to
@@ -271,8 +271,8 @@ second operator triggering a run at exactly the same moment.
 For a **read-only status check** that never triggers another ETL:
 
 ```bash
-bash check_airflow_state.sh dev
-bash check_airflow_state.sh prod
+bash deployment/scripts/check_airflow_state.sh dev
+bash deployment/scripts/check_airflow_state.sh prod
 ```
 
 The status script prints the five latest DAG runs for the selected namespace;
@@ -283,7 +283,7 @@ sudo k3s kubectl -n prod exec deployment/airflow -- \
   airflow dags list-runs job_market_etl --limit 5
 ```
 
-Don't rerun `init_airflow.sh` just to check progress. After the active run
+Don't rerun `deployment/scripts/init_airflow.sh` just to check progress. After the active run
 finishes, a subsequent invocation can trigger another ETL. These scripts
 don't detect independently launched `data-update` Kubernetes Jobs.
 
@@ -313,7 +313,7 @@ After the first production promotion completes in GitHub Actions, on the
 cd ~/german-job-market-analytics
 git switch main
 git pull --ff-only
-bash argocd/bootstrap-prod.sh
+bash deployment/argocd/bootstrap-prod.sh
 ```
 
 The bootstrap creates isolated prod Secrets, PVCs and Deployments, then
@@ -328,8 +328,8 @@ and do not overlap both ETL pipelines until proven safe.
 To inspect rendered configurations:
 
 ```bash
-sudo k3s kubectl kustomize kubernetes/overlays/dev
-sudo k3s kubectl kustomize kubernetes/overlays/prod
+sudo k3s kubectl kustomize deployment/kubernetes/overlays/dev
+sudo k3s kubectl kustomize deployment/kubernetes/overlays/prod
 ```
 
 Keep backups of PostgreSQL, Airflow state, ETL files and credentials:

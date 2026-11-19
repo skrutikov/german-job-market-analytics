@@ -34,7 +34,7 @@ Terraform state; without them encrypted archives/VM recreation may be unusable.
 ## Threat model and prerequisites
 
 Run the scripts from a **trusted workstation**, with `ssh k3s-vm` configured
-as in [the infrastructure guide](../infrastructure/README.md). The SSH
+as in [the infrastructure guide](../deployment/README.md). The SSH
 connection uses the Proxmox jump host, not an exposed Kubernetes API. The
 remote Ubuntu VM must support `sudo -n k3s kubectl`. Install `age`, `ssh`,
 `gzip`, `sha256sum`, and `python3` on the workstation.
@@ -80,7 +80,7 @@ cannot decrypt the backup.
 
 1. Pick `dev` or `prod` and confirm sufficient free space on the
    workstation. **No manual recording of image tags or Git commits is needed.**
-   `dr/backup.sh` queries the actual Kubernetes Deployment images and Argo CD
+   `deployment/dr/backup.sh` queries the actual Kubernetes Deployment images and Argo CD
    and writes `backup-metadata.txt` beside the encrypted backup files.
    For `prod`, Argo CD tracks `production`, which may differ from the
    Git branch checked out on either the workstation or the VM.
@@ -101,7 +101,7 @@ cannot decrypt the backup.
 3. On the **workstation**, execute:
 
    ```bash
-   bash dr/backup.sh prod k3s-vm
+   bash deployment/dr/backup.sh prod k3s-vm
    ```
 
    The script streams a consistent custom PostgreSQL dump, the namespace
@@ -159,7 +159,7 @@ cannot decrypt the backup.
    Install Docker on the trusted workstation, then run:
 
    ```bash
-   DR_TEST_DB_RESTORE=1 bash dr/backup.sh prod k3s-vm
+   DR_TEST_DB_RESTORE=1 bash deployment/dr/backup.sh prod k3s-vm
    ```
 
    This restores the actual dump into a temporary, network-isolated local
@@ -180,7 +180,7 @@ full isolated restore drill.
 
 ## Finalize a fully copied backup after a verification-only failure
 
-If `dr/backup.sh` has already copied all encrypted files but failed **only
+If `deployment/dr/backup.sh` has already copied all encrypted files but failed **only
 at the verification step** (for example because an older verifier expected
 five instead of four arguments), the source PVCs do **not** need to be copied
 again. This avoids another Airflow/Grafana maintenance interruption.
@@ -191,7 +191,7 @@ The workstation directory must have all five nonempty `.age` archives and
 run the following **on the trusted workstation**:
 
 ```bash
-bash dr/finalize_backup.sh prod k3s-vm \
+bash deployment/dr/finalize_backup.sh prod k3s-vm \
   "$HOME/job-market-off-vm-backups/prod/20261118T165839Z"
 ```
 
@@ -238,7 +238,7 @@ incomplete directory:
 
 ```bash
 git pull --ff-only
-DR_VERIFY_TIMEOUT_SECONDS=120 bash dr/finalize_backup.sh prod k3s-vm \
+DR_VERIFY_TIMEOUT_SECONDS=120 bash deployment/dr/finalize_backup.sh prod k3s-vm \
   "$HOME/job-market-off-vm-backups/prod/20261118T165839Z"
 ```
 
@@ -266,7 +266,7 @@ sudo k3s kubectl -n argocd get application job-market-prod
 
 On the workstation, an incomplete backup directory **without a valid
 `SHA256SUMS`** must not be used for recovery. Rerun
-`bash dr/backup.sh prod k3s-vm` from an updated
+`bash deployment/dr/backup.sh prod k3s-vm` from an updated
 `disaster-recovery` checkout. It creates a new timestamped directory.
 If the node-path preflight fails, check the PVC/PV storage layout and
 passwordless sudo permissions rather than disabling the safety check.
@@ -300,15 +300,15 @@ Every command checks its current Terraform state/configuration; it will not
 take state for VM 100 and silently retarget it to 101. Use the already
 created `~/german-job-market-dr-test` worktree for VM 101, not the
 production checkout. Never copy production `terraform.tfstate` to the DR
-worktree. `restore.sh` refuses VM 100 entirely and checks that the SSH
+worktree. `deployment/scripts/restore.sh` refuses VM 100 entirely and checks that the SSH
 destination's hostname and k3s node match Terraform's recorded VM name.
 
-`restore.sh 101` selects the most recent successfully checksummed
+`deployment/scripts/restore.sh 101` selects the most recent successfully checksummed
 `$HOME/job-market-off-vm-backups/prod/<timestamp>` unless you provide an
 explicit backup directory as its second argument. It **does not require
 cloning Git onto the replacement VM**. It reads the exact production GitOps
 commit recorded in the backup, verifies the production branch ancestry,
-extracts only `kubernetes/` manifests locally using `git archive`, and
+extracts only `deployment/kubernetes/` manifests locally using `git archive`, and
 transfers those manifests temporarily to VM 101. It verifies/reuses the
 actual backed-up image tag, restores Secrets and all three file PVCs, starts
 PostgreSQL, restores the database, deploys the remaining Kubernetes
@@ -335,14 +335,14 @@ outputs. For the current test, the required setup is only:
 cd ~/german-job-market-dr-test
 git fetch origin
 git switch --detach origin/disaster-recovery
-bash restore.sh 101
+bash deployment/scripts/restore.sh 101
 ```
 
-Use `bash restore.sh 101` if its executable bit is not available locally.
+Use `bash deployment/scripts/restore.sh 101` if its executable bit is not available locally.
 If recovery fails halfway through, **do not simply rerun the full command**
 on already-restored PVCs: it intentionally refuses nonempty/pre-existing
 workloads. Inspect the target and resume the appropriate
-`dr/restore.sh` stage from the manual runbook below, or recreate only
+`deployment/dr/restore.sh` stage from the manual runbook below, or recreate only
 the disposable test VM using its separate Terraform state.
 Keep the independent encrypted backup and recovery report after destroying
 VM 101. Monitor the shared Proxmox disk capacity throughout the drill.
@@ -356,7 +356,7 @@ The workstation initiates all recovery actions via SSH. **Every restore
 stage now requires two independent safeguards**:
 `CONFIRM_RESTORE=<namespace>` and
 `DR_EXPECTED_NODE_NAME=<exact recovery Kubernetes node name>`. Before
-modifying the destination, `dr/restore.sh` queries the Kubernetes node
+modifying the destination, `deployment/dr/restore.sh` queries the Kubernetes node
 through the provided SSH alias and refuses a mismatch. This prevents a
 mistyped SSH alias from accidentally restoring production backups into the
 original production VM (for example, `job-market-ubuntu-100` instead of
@@ -364,12 +364,12 @@ original production VM (for example, `job-market-ubuntu-100` instead of
 verification of the SSH host key and the isolated Terraform state.
 
 1. **Recreate infrastructure** from the workstation using the documented
-   [Terraform/Ansible `./deploy.sh`](../infrastructure/README.md).
+   [Terraform/Ansible `./deploy.sh`](../deployment/README.md).
    Restore/provide Terraform state and the required Proxmox API token/ACLs.
    Use a *different test VM* to avoid destroying source data. On the new
    Ubuntu VM, install `git`, clone the repository and select the **same
-   recorded Git revision**, but **do not run `setup_vm.sh` or
-   `kubernetes/deploy.sh` yet**: they start writers too early for a
+   recorded Git revision**, but **do not run `deployment/scripts/setup_vm.sh` or
+   `deployment/kubernetes/deploy.sh` yet**: they start writers too early for a
    restore into empty volumes. Set up Elasticsearch's required
    `vm.max_map_count=262144` before final deployment.
 
@@ -391,12 +391,12 @@ export CONFIRM_RESTORE=prod
 export DR_EXPECTED_NODE_NAME=job-market-dr-test
 
 # Start with preparation of empty PVCs only, on the verified replacement VM.
-bash dr/restore.sh prod k3s-dr-test "$BACKUP" "$AGE_IDENTITY" prepare
+bash deployment/dr/restore.sh prod k3s-dr-test "$BACKUP" "$AGE_IDENTITY" prepare
 ```
 
 The named node must be `job-market-dr-test`; the `prod` namespace on
 that VM must have no existing production deployments or data. Do not apply
-the full application overlay, `setup_vm.sh`, or bootstrap automatic
+the full application overlay, `deployment/scripts/setup_vm.sh`, or bootstrap automatic
 GitOps/ETL before restoring volumes and PostgreSQL. A restored Airflow
 scheduler may initiate external work; isolate or disable its execution and
 external endpoints before eventually starting it. Monitor the limited
@@ -412,9 +412,9 @@ Terraform-managed VM 101 after capturing results.
    export CONFIRM_RESTORE=dev
    export DR_EXPECTED_NODE_NAME="REPLACEMENT_K3S_NODE_NAME"
 
-   bash dr/restore.sh dev k3s-vm "$BACKUP" "$AGE_IDENTITY" prepare
-   bash dr/restore.sh dev k3s-vm "$BACKUP" "$AGE_IDENTITY" secrets
-   bash dr/restore.sh dev k3s-vm "$BACKUP" "$AGE_IDENTITY" volumes
+   bash deployment/dr/restore.sh dev k3s-vm "$BACKUP" "$AGE_IDENTITY" prepare
+   bash deployment/dr/restore.sh dev k3s-vm "$BACKUP" "$AGE_IDENTITY" secrets
+   bash deployment/dr/restore.sh dev k3s-vm "$BACKUP" "$AGE_IDENTITY" volumes
    ```
 
    `prepare` creates the namespace and four PVCs; `secrets` reinstalls the
@@ -433,14 +433,14 @@ Terraform-managed VM 101 after capturing results.
 
    ```bash
    cd ~/german-job-market-analytics
-   sudo k3s kubectl -n dev apply -f kubernetes/base/postgres.yaml
+   sudo k3s kubectl -n dev apply -f deployment/kubernetes/base/postgres.yaml
    sudo k3s kubectl -n dev rollout status deployment/postgres --timeout=180s
    ```
 
    Then restore PostgreSQL from the workstation:
 
    ```bash
-   bash dr/restore.sh dev k3s-vm "$BACKUP" "$AGE_IDENTITY" postgres
+   bash deployment/dr/restore.sh dev k3s-vm "$BACKUP" "$AGE_IDENTITY" postgres
    ```
 
    The restore verifies the `pg_restore` table of contents, then uses
@@ -453,7 +453,7 @@ Terraform-managed VM 101 after capturing results.
 4. **Deploy application** on the VM from the chosen recorded Git revision:
 
    ```bash
-   sudo k3s kubectl apply -k kubernetes/overlays/dev
+   sudo k3s kubectl apply -k deployment/kubernetes/overlays/dev
    sudo k3s kubectl -n dev rollout status deployment/backend --timeout=600s
    sudo k3s kubectl -n dev rollout status deployment/airflow --timeout=600s
    ```
@@ -489,7 +489,7 @@ Terraform-managed VM 101 after capturing results.
    check `/api/health` through the existing tunnel, verify job search,
    Grafana and Airflow DAG state, and confirm the correct image SHA.
    Verify that a new ETL run does not duplicate/corrupt restored data.
-   Do not trigger an unnecessary `init_airflow.sh` initial import before
+   Do not trigger an unnecessary `deployment/scripts/init_airflow.sh` initial import before
    checking the restored scheduler and tables.
 
 ## Container, node, and VM failures
@@ -509,7 +509,7 @@ Terraform-managed VM 101 after capturing results.
 ## Rollback to a previous immutable release (without reverting data)
 
 Two application images (backend/frontend/ETL and Airflow) are pinned in
-`kubernetes/overlays/dev/kustomization.yaml` or `.../prod/kustomization.yaml`
+`deployment/kubernetes/overlays/dev/kustomization.yaml` or `.../prod/kustomization.yaml`
 using `sha-<40-character-commit>` tags, for example
 `ghcr.io/skrutikov/german-job-market-analytics:sha-...`. These are stable
 release identifiers, unlike moving `:dev`/`:main` tags.
@@ -521,7 +521,7 @@ release identifiers, unlike moving `:dev`/`:main` tags.
    `sha-...` tag on the **branch watched by Argo CD**: `main` for dev or
    `production` for prod. Use a review/approval for production and
    follow the branch rules. Do not push an unreviewed override to prod.
-3. Validate `kubectl kustomize kubernetes/overlays/<env>` and CI tests,
+3. Validate `kubectl kustomize deployment/kubernetes/overlays/<env>` and CI tests,
    commit the change, let Argo CD sync, then inspect:
    `kubectl -n <env> rollout status deployment/backend`,
    `deployment/airflow`, and running images. Ensure CI's dev image-tag

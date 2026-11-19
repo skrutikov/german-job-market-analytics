@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Run on the operator workstation against a disposable/rebuilt k3s VM.
-# Usage: CONFIRM_RESTORE=dev bash dr/restore.sh dev k3s-vm /backups/dev/TIMESTAMP /path/key.txt prepare|secrets|volumes|postgres
+# Usage: CONFIRM_RESTORE=dev bash deployment/dr/restore.sh dev k3s-vm /backups/dev/TIMESTAMP /path/key.txt prepare|secrets|volumes|postgres
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 
 (( $# == 5 )) ||
-  die "Usage: CONFIRM_RESTORE=dev bash dr/restore.sh dev|prod SSH_HOST BACKUP_DIR AGE_IDENTITY prepare|secrets|volumes|postgres"
+  die "Usage: CONFIRM_RESTORE=dev bash deployment/dr/restore.sh dev|prod SSH_HOST BACKUP_DIR AGE_IDENTITY prepare|secrets|volumes|postgres"
 ns="$1"; validate_namespace "$ns"
 [[ "${CONFIRM_RESTORE:-}" == "$ns" ]] ||
   die "Set CONFIRM_RESTORE=$ns to acknowledge that this overwrites live state"

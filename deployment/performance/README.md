@@ -90,13 +90,13 @@ curl -fsS http://127.0.0.1:8088/api/health
 **Smoke test** — 1 virtual user, 5 iterations:
 
 ```bash
-k6 run -e BASE_URL=http://127.0.0.1:8088 -e PROFILE=smoke performance/k6/job-search.js
+k6 run -e BASE_URL=http://127.0.0.1:8088 -e PROFILE=smoke deployment/performance/k6/job-search.js
 ```
 
 **Ramping test** — gradual increases through 1, 5, 10 and 20 virtual users, followed by ramp-down:
 
 ```bash
-k6 run -e BASE_URL=http://127.0.0.1:8088 -e PROFILE=ramp performance/k6/job-search.js
+k6 run -e BASE_URL=http://127.0.0.1:8088 -e PROFILE=ramp deployment/performance/k6/job-search.js
 ```
 
 The script randomly mixes keyword searches (`Data Engineer`, `Python`, `AI Engineer`) and unfiltered listings. It checks for HTTP 200 and a JSON-array response, with short pauses between requests. It never writes application data.
@@ -106,13 +106,13 @@ The script randomly mixes keyword searches (`Data Engineer`, `Python`, `AI Engin
 To save the k6 summary locally:
 
 ```bash
-mkdir -p performance/results
+mkdir -p deployment/performance/results
 k6 run -e BASE_URL=http://127.0.0.1:8088 -e PROFILE=ramp \
-  --summary-export performance/results/ramp-summary.json \
-  performance/k6/job-search.js
+  --summary-export deployment/performance/results/ramp-summary.json \
+  deployment/performance/k6/job-search.js
 ```
 
-`performance/results/` is Git-ignored. Observe the same test interval in Grafana (last 15–30 minutes; 10-second refresh) and compare **k6 throughput/p95/errors** with **FastAPI CPU/memory/p95**. When testing the small VM, prefer the smoke profile first and do not run multiple ramp tests or ETL updates concurrently. Stop if services become unhealthy.
+`deployment/performance/results/` is Git-ignored. Observe the same test interval in Grafana (last 15–30 minutes; 10-second refresh) and compare **k6 throughput/p95/errors** with **FastAPI CPU/memory/p95**. When testing the small VM, prefer the smoke profile first and do not run multiple ramp tests or ETL updates concurrently. Stop if services become unhealthy.
 
 ## Restore main after the feature branch is merged
 

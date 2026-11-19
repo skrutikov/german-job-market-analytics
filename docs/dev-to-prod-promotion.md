@@ -81,7 +81,7 @@ pulls Git directly inside k3s; GitHub Actions never connects to the cluster.
    tag utility, runs Trivy, and publishes both packages to GHCR.
 3. Only after both packages publish, the \`update_dev_gitops\` job writes
    \`sha-<published commit>\` into
-   \`kubernetes/overlays/dev/kustomization.yaml\` on \`main\`.
+   \`deployment/kubernetes/overlays/dev/kustomization.yaml\` on \`main\`.
    It skips stale runs if another commit has already reached \`main\`.
    The generated commit uses \`GITHUB_TOKEN\` and does not start another
    GitHub Actions run. Argo CD still observes the Git change.
@@ -129,7 +129,7 @@ usual \`main\` checkout:
 cd ~/german-job-market-analytics
 git switch main
 git pull --ff-only
-bash argocd/bootstrap-prod.sh
+bash deployment/argocd/bootstrap-prod.sh
 \`\`\`
 
 This script fetches \`production\`, deploys that branch's prod overlay with

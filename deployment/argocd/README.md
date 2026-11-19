@@ -4,7 +4,7 @@ Argo CD reconciles `dev` from `main` and, **after explicit release approval and 
 
 ## Bootstrap on the Proxmox VM
 
-For a **fresh Ubuntu VM**, the [`setup_vm.sh` bootstrap](../kubernetes/README.md#quick-start-setup_vmsh-recommended-for-a-fresh-vm)
+For a **fresh Ubuntu VM**, the [`deployment/scripts/setup_vm.sh` bootstrap](../kubernetes/README.md#quick-start-setup_vmsh-recommended-for-a-fresh-vm)
 does the application deployment and Argo CD bootstrap in one command.
 The following commands remain the manual alternative.
 
@@ -30,11 +30,11 @@ creates that branch, on the **Ubuntu VM** as the normal account:
 cd ~/german-job-market-analytics
 git switch main
 git pull --ff-only
-bash argocd/bootstrap-prod.sh
+bash deployment/argocd/bootstrap-prod.sh
 ```
 
 This fetches the approved branch into a temporary checkout, runs
-`kubernetes/deploy.sh prod`, applies PVC protection, and creates
+`deployment/kubernetes/deploy.sh prod`, applies PVC protection, and creates
 `job-market-prod`. It does not change `job-market-dev`.
 Subsequent approved promotions are automatically synchronized to prod by
 Argo CD. Configure GitHub's `production` environment required reviewers
@@ -106,7 +106,7 @@ sudo k3s kubectl -n dev get pods
 
 In the Argo CD web UI, inspect the `job-market-dev` resource tree and its **Sync** and **Health** status. Argo CD adopts the existing Kubernetes resources; its first sync may update resource metadata or trigger rollout. No separate deployment is created.
 
-To test reconciliation, commit a small, safe, non-secret change under `kubernetes/overlays/dev` on the branch that the Application tracks. Argo CD periodically detects and applies the desired manifests. Do not manually run `kubectl apply -k` on those resources once Argo CD is managing them.
+To test reconciliation, commit a small, safe, non-secret change under `deployment/kubernetes/overlays/dev` on the branch that the Application tracks. Argo CD periodically detects and applies the desired manifests. Do not manually run `kubectl apply -k` on those resources once Argo CD is managing them.
 
 **Image releases are now GitOps-driven.** After GitHub Actions successfully
 builds, scans, and publishes both immutable `sha-<commit>` images, its
