@@ -118,9 +118,9 @@ PROXMOX VM PERMISSIONS (before VM creation)
 For a new or recreated VM, log in to the Proxmox HOST as root
 and grant access only to VM $VM_ID:
 
-pveum acl modify /vms/$VM_ID \
-  --roles PVEVMAdmin \
-  --users root1@pve \
+pveum acl modify /vms/$VM_ID \\
+  --roles PVEVMAdmin \\
+  --users root1@pve \\
   --tokens 'root1@pve!terraform'
 
 Do this before Terraform apply; otherwise the API may return HTTP 403.
