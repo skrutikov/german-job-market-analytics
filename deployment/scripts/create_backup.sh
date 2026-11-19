@@ -1,13 +1,51 @@
 #!/usr/bin/env bash
 # Run on an operator workstation, never on the Proxmox/k3s VM.
-# Usage: bash deployment/scripts/create_backup.sh prod k3s-vm (or specify recipient and backup root)
+# Usage: bash deployment/scripts/create_backup.sh VM_ID dev|prod
+# Legacy: bash deployment/scripts/create_backup.sh dev|prod SSH_HOST
 set -euo pipefail
 source "$(dirname "$0")/../dr/common.sh"
 source "$(dirname "$0")/../dr/maintenance.sh"
 
+# Preferred: create_backup.sh VM_ID dev|prod [AGE_RECIPIENT BACKUP_ROOT]
+# Legacy:    create_backup.sh dev|prod SSH_ALIAS [AGE_RECIPIENT BACKUP_ROOT]
 (( $# == 2 || $# == 4 )) ||
-  die "Usage: bash deployment/scripts/create_backup.sh dev|prod SSH_HOST [AGE_RECIPIENT LOCAL_BACKUP_ROOT]"
-ns="$1"; validate_namespace "$ns"
+  die "Usage: bash deployment/scripts/create_backup.sh VM_ID dev|prod [AGE_RECIPIENT BACKUP_ROOT]
+       or: bash deployment/scripts/create_backup.sh dev|prod SSH_HOST [AGE_RECIPIENT BACKUP_ROOT]"
+TARGET_FROM_WORKSPACE=false
+if [[ "$1" =~ ^[0-9]+$ ]]; then
+  VM_ID="$1"
+  ns="$2"; validate_namespace "$ns"
+  [[ "$VM_ID" =~ ^[1-9][0-9]{2,8}$ ]] ||
+    die "VM_ID must be between 100 and 999999999"
+  repo_root="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
+  TF_DIR="$repo_root/deployment/terraform"
+  source "$repo_root/deployment/scripts/terraform_vm_workspace.sh"
+  command -v terraform >/dev/null || die "Terraform is required for VM-ID backup"
+  terraform_vm_workspace existing
+  terraform -chdir="$TF_DIR" state list |
+    grep -Fxq 'proxmox_virtual_environment_vm.k3s[0]' ||
+    die "Workspace vm-$VM_ID does not manage a VM"
+  managed_id="$(terraform -chdir="$TF_DIR" output -raw managed_vm_id)"
+  managed_name="$(terraform -chdir="$TF_DIR" output -raw managed_vm_name)"
+  managed_cidr="$(terraform -chdir="$TF_DIR" output -raw managed_vm_ipv4)"
+  managed_user="$(terraform -chdir="$TF_DIR" output -raw managed_vm_username)"
+  ssh_pub="$(terraform -chdir="$TF_DIR" output -raw managed_vm_ssh_public_key_path)"
+  [[ "$managed_id" == "$VM_ID" ]] ||
+    die "VM $VM_ID does not match Terraform state ($managed_id)"
+  [[ "$managed_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ &&
+     "$managed_cidr" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/24$ &&
+     "$managed_user" =~ ^[a-z_][a-z0-9_-]*$ &&
+     "$ssh_pub" == /* && "$ssh_pub" == *.pub ]] ||
+    die "Invalid host, IP, username or SSH key in Terraform state"
+  DR_SSH_IDENTITY="${DR_SSH_IDENTITY:-${ssh_pub%.pub}}"
+  [[ -r "$DR_SSH_IDENTITY" ]] || die "VM SSH private key is not readable"
+  DR_SSH_JUMP="${DR_SSH_JUMP:-${JUMP_USER:-jumpuser}@${PROXMOX_HOST:-195.154.103.231}}"
+  ssh_target="$managed_user@${managed_cidr%%/*}"
+  TARGET_FROM_WORKSPACE=true
+else
+  ns="$1"; validate_namespace "$ns"
+  ssh_target="$2"
+fi
 require_tools
 command -v python3 >/dev/null || die "python3 is required"
 command -v tar >/dev/null || die "tar is required"
@@ -26,7 +64,13 @@ fi
 printf 'key check' | age -r "$recipient" |
   age -d -i "$identity" | grep -Fxq 'key check' ||
   die "Selected age recipient and identity do not match"
-check_host "$2"
+check_host "$ssh_target"
+if [[ "$TARGET_FROM_WORKSPACE" == true ]]; then
+  actual_host="$(remote "hostname")"
+  actual_node="$(remote "sudo -n k3s kubectl get nodes -o jsonpath='{.items[0].metadata.name}'")"
+  [[ "$actual_host" == "$managed_name" && "$actual_node" == "$managed_name" ]] ||
+    die "Backup destination mismatch: expected $managed_name; host=$actual_host node=$actual_node"
+fi
 umask 077
 
 remote "sudo -n k3s kubectl -n $ns rollout status deployment/postgres --timeout=120s" >/dev/null

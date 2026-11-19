@@ -101,7 +101,11 @@ cannot decrypt the backup.
 3. On the **workstation**, execute:
 
    ```bash
-   bash deployment/scripts/create_backup.sh prod k3s-vm
+   # Preferred when the VM is managed by a Terraform workspace:
+bash deployment/scripts/create_backup.sh 103 prod
+
+# Existing SSH-alias-based form also remains supported:
+bash deployment/scripts/create_backup.sh prod k3s-vm
    ```
 
    The script streams a consistent custom PostgreSQL dump, the namespace
