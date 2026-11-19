@@ -1,8 +1,14 @@
 # Argo CD GitOps deployment
 
-Argo CD reconciles `dev` from `main` and, **after explicit release approval and a one-time bootstrap**, `prod` from the independent `production` Git branch. Both Applications live in the `argocd` namespace. This project uses the pinned non-HA Argo CD **v3.6.1** installer, appropriate for a small single-node demonstration cluster. Proxmox infrastructure remains managed by Terraform and Ansible. See the [promotion guide](../../docs/dev-to-prod-promotion.md).
+Argo CD normally reconciles `dev` from `main` and, **after explicit release approval and a one-time bootstrap**, `prod` from the independent `production` Git branch. Both Applications live in the `argocd` namespace. This project uses the pinned non-HA Argo CD **v3.6.1** installer, appropriate for a small single-node demonstration cluster. Proxmox infrastructure remains managed by Terraform and Ansible. See the [promotion guide](../../docs/dev-to-prod-promotion.md).
 
 ## Bootstrap on the Proxmox VM
+
+During feature-branch deployment, the dev Application tracks the branch
+selected by `JOB_MARKET_REF` (for example, `maximize-automation`) instead
+of `main`. This is necessary while the refactored Kubernetes paths are not
+present on `main`. Production still tracks the separately approved
+`production` branch.
 
 For a **fresh Ubuntu VM**, the [`deployment/scripts/setup_vm.sh` bootstrap](../kubernetes/README.md#quick-start-setup_vmsh-recommended-for-a-fresh-vm)
 does the application deployment and Argo CD bootstrap in one command.

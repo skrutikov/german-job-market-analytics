@@ -4,8 +4,10 @@
 set -euo pipefail
 
 revision="${1:-main}"
-if [[ "$revision" != "gitops-pruning" && "$revision" != "main" ]]; then
-    echo "Usage: sudo ./deployment/argocd/bootstrap.sh [gitops-pruning|main]" >&2
+# Dev GitOps must track the same branch as the manifests used for bootstrap.
+if [[ ! "$revision" =~ ^[a-zA-Z0-9][a-zA-Z0-9._/-]*$ ||
+      "$revision" == *..* || "$revision" == production ]]; then
+    echo "Usage: sudo ./deployment/argocd/bootstrap.sh [SAFE_DEV_GIT_BRANCH]" >&2
     exit 2
 fi
 if (( EUID != 0 )); then

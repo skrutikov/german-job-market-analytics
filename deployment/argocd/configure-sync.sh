@@ -5,14 +5,23 @@ set -euo pipefail
 
 revision="${1:-main}"
 environment="${2:-dev}"
-case "$environment:$revision" in
-    dev:main|dev:gitops-pruning|prod:production) ;;
-    *)
-        echo "Usage: sudo ./deployment/argocd/configure-sync.sh [main|gitops-pruning] [dev]" >&2
-        echo "   or: sudo ./deployment/argocd/configure-sync.sh production prod" >&2
+# Prod is restricted to the approved production branch. Dev may use a
+# feature branch while its manifest paths are not yet merged into main.
+if [[ "$environment" == prod ]]; then
+    if [[ "$revision" != production ]]; then
+        echo "ERROR: Production GitOps must track production." >&2
         exit 2
-        ;;
-esac
+    fi
+elif [[ "$environment" == dev ]]; then
+    if [[ ! "$revision" =~ ^[a-zA-Z0-9][a-zA-Z0-9._/-]*$ ||
+          "$revision" == *..* || "$revision" == production ]]; then
+        echo "ERROR: Expected a safe development branch name." >&2
+        exit 2
+    fi
+else
+    echo "ERROR: Environment must be dev or prod." >&2
+    exit 2
+fi
 if (( EUID != 0 )); then
     echo "Run as root on the Proxmox VM." >&2
     exit 1
@@ -60,7 +69,7 @@ done
 
 echo "Configuring $application_name with auto-pruning, tracking '$revision'..."
 if [[ "$environment" == "dev" ]]; then
-    sed "s/targetRevision: main/targetRevision: $revision/" "$application" |
+    sed "s|targetRevision: main|targetRevision: $revision|" "$application" |
         k3s kubectl -n argocd apply -f -
 else
     k3s kubectl -n argocd apply -f "$application"

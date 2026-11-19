@@ -18,8 +18,11 @@ class VmWorkspaceShellTests(unittest.TestCase):
             "restore_backup.sh",
             "terraform_vm_workspace.sh",
         )
+        argo = SCRIPTS.parent / "argocd"
+        paths = [*(str(SCRIPTS / name) for name in scripts)]
+        paths.extend((str(argo / "bootstrap.sh"), str(argo / "configure-sync.sh")))
         result = subprocess.run(
-            ["bash", "-n", *(str(SCRIPTS / name) for name in scripts)],
+            ["bash", "-n", *paths],
             capture_output=True,
             text=True,
             check=False,

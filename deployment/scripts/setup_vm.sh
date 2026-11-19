@@ -66,7 +66,7 @@ echo "Deploying the dev Kubernetes application..."
 sudo bash "$repo_dir/deployment/kubernetes/deploy.sh" dev
 
 echo "Installing and configuring Argo CD..."
-sudo bash "$repo_dir/deployment/argocd/bootstrap.sh" main
+sudo bash "$repo_dir/deployment/argocd/bootstrap.sh" "$repo_ref"
 
 echo "Checking the final cluster state..."
 sudo k3s kubectl get nodes

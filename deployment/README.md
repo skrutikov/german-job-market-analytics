@@ -56,8 +56,10 @@ and the script still requests explicit approval for changes.
 After provisioning, `deploy.sh` waits for Cloud-Init and invokes Ansible
 to install and verify k3s. It then runs `setup_vm.sh` on the guest to deploy
 the dev application and bootstrap Argo CD, using the workstation's current Git
-branch (or `JOB_MARKET_REF` if explicitly set). Argo CD's dev Application
-continues to track `main`, as configured in the GitOps manifests. To
+branch (or `JOB_MARKET_REF` if explicitly set). For feature-branch testing, Argo CD's dev Application tracks this same
+branch instead of `main`. Once the new layout is merged into `main`,
+you can run `sudo bash deployment/argocd/configure-sync.sh main` on the VM
+to change the tracking branch back to `main`. To
 provision only the VM and k3s, add `--infra-only`:
 
 ```bash
