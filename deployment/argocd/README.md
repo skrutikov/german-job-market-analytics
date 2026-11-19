@@ -1,6 +1,6 @@
 # Argo CD GitOps deployment
 
-Argo CD reconciles `dev` from `main` and, **after explicit release approval and a one-time bootstrap**, `prod` from the independent `production` Git branch. Both Applications live in the `argocd` namespace. This project uses the pinned non-HA Argo CD **v3.6.1** installer, appropriate for a small single-node demonstration cluster. Proxmox infrastructure remains managed by Terraform and Ansible. See the [promotion guide](../docs/dev-to-prod-promotion.md).
+Argo CD reconciles `dev` from `main` and, **after explicit release approval and a one-time bootstrap**, `prod` from the independent `production` Git branch. Both Applications live in the `argocd` namespace. This project uses the pinned non-HA Argo CD **v3.6.1** installer, appropriate for a small single-node demonstration cluster. Proxmox infrastructure remains managed by Terraform and Ansible. See the [promotion guide](../../docs/dev-to-prod-promotion.md).
 
 ## Bootstrap on the Proxmox VM
 
@@ -23,7 +23,7 @@ This installs Argo CD into the `argocd` namespace, waits for its components to b
 
 Production **must not** be deployed from the `main` overlay, because
 production tracks the separately approved `production` Git branch.
-After a successful [production promotion](../docs/dev-to-prod-promotion.md)
+After a successful [production promotion](../../docs/dev-to-prod-promotion.md)
 creates that branch, on the **Ubuntu VM** as the normal account:
 
 ```bash
@@ -113,7 +113,7 @@ builds, scans, and publishes both immutable `sha-<commit>` images, its
 `update_dev_gitops` job updates only the dev overlay on `main`. Argo CD
 then auto-deploys dev. A separate, manually approved GitHub workflow updates
 only the `production` Git branch, triggering production Argo CD. See the
-[promotion runbook](../docs/dev-to-prod-promotion.md).
+[promotion runbook](../../docs/dev-to-prod-promotion.md).
 
 ## Returning to main after feature-branch testing
 

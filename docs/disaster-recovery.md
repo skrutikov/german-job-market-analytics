@@ -461,7 +461,7 @@ Terraform-managed VM 101 after capturing results.
    For prod, use the `production` checkout/overlay and `prod` namespace.
    Airflow SQLite and Grafana data were restored *before* their Pods start.
    In a new cluster, install/restore Argo CD separately as per
-   [Argo bootstrap](../argocd/README.md), **after** validating recovered
+   [Argo bootstrap](../deployment/argocd/README.md), **after** validating recovered
    state; ensure its Application points to `main` for dev or
    `production` for prod. Enable automated sync only after checks.
 

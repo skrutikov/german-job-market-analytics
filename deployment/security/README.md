@@ -35,7 +35,7 @@ credentials in source-controlled files or image build arguments.
 
 ## Execution and enforcement
 
-[Security workflow](../.github/workflows/trivy.yml) runs automatically:
+[Security workflow](../../.github/workflows/trivy.yml) runs automatically:
 
 - On pull requests targeting `main` (including proposed security changes)
 - On pushes to `main` through the existing Kubernetes image pipeline
@@ -96,7 +96,7 @@ Use the report to distinguish:
 - **Secrets**: revoke/rotate any exposed live credential, remove it from
   Git and its history as appropriate; ignoring the detection is not remediation.
 
-For `main`, the [Kubernetes pipeline](../.github/workflows/kubernetes.yml)
+For `main`, the [Kubernetes pipeline](../../.github/workflows/kubernetes.yml)
 **waits for all Trivy jobs to pass** before publishing images to GHCR. This
 prevents knowingly publishing a new release after a failed security gate.
 The scanner builds images from the reviewed commit, while the separate publish

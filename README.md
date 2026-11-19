@@ -52,7 +52,14 @@ FastAPI provides the application API, which is consumed by the Dash frontend. Ng
 ├── airflow/          Airflow DAG and container configuration
 ├── data/             Generated raw and processed data
 ├── grafana/          Grafana dashboards and provisioning
-├── deployment/nginx/            Nginx reverse-proxy configuration
+├── deployment/       Proxmox, Terraform, Ansible, Kubernetes, GitOps, operations
+│   ├── terraform/
+│   ├── ansible/
+│   ├── kubernetes/
+│   ├── argocd/
+│   ├── nginx/       Nginx reverse-proxy configuration
+│   ├── dr/
+│   └── scripts/
 ├── prometheus/       Prometheus and Alertmanager configuration
 ├── src/
 │   └── job_market/
@@ -74,7 +81,7 @@ See [Proxmox infrastructure deployment](deployment/README.md) for Terraform prov
 
 On a freshly provisioned Ubuntu k3s VM, use [`deployment/scripts/setup_vm.sh`](deployment/kubernetes/README.md#quick-start-setup_vmsh-recommended-for-a-fresh-vm) to install the application and Argo CD in one step; then run [`deployment/scripts/init_airflow.sh`](deployment/kubernetes/README.md#quick-start-init_airflowsh) to enable and trigger the first ETL. These two scripts run **on the Ubuntu VM**, not the local machine or Proxmox host.
 
-After the application is deployed on the Kubernetes VM, run `./kubernetes_start.sh dev` **from the local machine** to open the browser access tunnels in the background and display service URLs and login credentials. Stop with `./kubernetes_stop.sh dev`. See the [Kubernetes access instructions](deployment/kubernetes/README.md#4-access-from-the-local-machine-one-background-ssh-tunnel).
+After the application is deployed on the Kubernetes VM, run `./deployment/scripts/kubernetes_start.sh dev` **from the local machine** to open the browser access tunnels in the background and display service URLs and login credentials. Stop with `./deployment/scripts/kubernetes_stop.sh dev`. See the [Kubernetes access instructions](deployment/kubernetes/README.md#4-access-from-the-local-machine-one-background-ssh-tunnel).
 
 ## Usage
 

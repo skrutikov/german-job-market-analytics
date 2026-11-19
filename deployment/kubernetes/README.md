@@ -63,7 +63,7 @@ promotion, because production intentionally stays on its own Git branch.
 
 ## 1. CI images, automatic dev deployment and production promotion
 
-[GitHub Actions](../.github/workflows/kubernetes.yml) validates both
+[GitHub Actions](../../.github/workflows/kubernetes.yml) validates both
 Kustomize overlays, scans source and containers with Trivy, and builds/publishes
 both application and Airflow images to GHCR.
 
@@ -72,7 +72,7 @@ Each successful `main` publication creates an **immutable**
 `update_dev_gitops` job automatically updates the dev overlay in `main`;
 Argo CD watches `main` and deploys the new dev version. Production
 **never tracks `main` directly**: after manual and (when configured) reviewer
-approval, the [promotion workflow](../.github/workflows/promote-production.yml)
+approval, the [promotion workflow](../../.github/workflows/promote-production.yml)
 updates a separate `production` branch that prod Argo CD watches.
 
 Both environments use the same two image repositories, but **can run
@@ -82,7 +82,7 @@ different immutable image versions**:
 - Airflow: `ghcr.io/skrutikov/german-job-market-analytics-airflow:sha-<commit>`
 
 For step-by-step reviewer setup, dev verification, first production bootstrap,
-and recovery instructions, see the [dev-to-prod promotion runbook](../docs/dev-to-prod-promotion.md).
+and recovery instructions, see the [dev-to-prod promotion runbook](../../docs/dev-to-prod-promotion.md).
 
 GitHub Actions does **not** SSH into the private Proxmox VM. GHCR packages must
 be accessible to k3s (public or authenticated via a namespace imagePullSecret).
@@ -102,7 +102,7 @@ fresh VM yet, download just the bootstrap script from `main`:
 sudo apt-get update
 sudo apt-get install -y curl
 curl -fsSLo /tmp/job-market-setup-vm.sh \
-  https://raw.githubusercontent.com/skrutikov/german-job-market-analytics/main/setup_vm.sh
+  https://raw.githubusercontent.com/skrutikov/german-job-market-analytics/refactoring/deployment/scripts/setup_vm.sh
 bash /tmp/job-market-setup-vm.sh
 ```
 
@@ -318,7 +318,7 @@ bash deployment/argocd/bootstrap-prod.sh
 
 The bootstrap creates isolated prod Secrets, PVCs and Deployments, then
 registers the prod Argo CD Application. Later approved promotions automatically
-sync through Argo CD. See the [promotion guide](../docs/dev-to-prod-promotion.md).
+sync through Argo CD. See the [promotion guide](../../docs/dev-to-prod-promotion.md).
 
 A VM with **4 vCPUs, 16 GiB RAM and a 30 GiB disk** may support both stacks
 when idle, but Airflow/Elasticsearch and image layers can consume substantial
@@ -337,4 +337,4 @@ local-path PVCs are **not** a disaster-recovery solution.
 
 ## Disaster recovery
 
-See [the disaster-recovery runbook](../docs/disaster-recovery.md) for encrypted off-VM PostgreSQL and important PVC/Secret backups, ordered restoration to a new k3s VM, and immutable image rollback. The cluster's local-path PVCs are **not** backups.
+See [the disaster-recovery runbook](../../docs/disaster-recovery.md) for encrypted off-VM PostgreSQL and important PVC/Secret backups, ordered restoration to a new k3s VM, and immutable image rollback. The cluster's local-path PVCs are **not** backups.
