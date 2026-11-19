@@ -36,6 +36,74 @@ class VmWorkspaceShellTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_deploy_rejects_invalid_or_duplicate_modes(self):
+        for arguments in (
+            ("103", "27", "staging"),
+            ("103", "27", "dev", "prod"),
+            ("103", "27", "--infra-only", "--infra-only"),
+        ):
+            with self.subTest(arguments=arguments):
+                result = subprocess.run(
+                    ["bash", str(SCRIPTS / "deploy.sh"), *arguments],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("Usage:", result.stderr)
+
+    def test_setup_vm_rejects_invalid_environment(self):
+        result = subprocess.run(
+            ["bash", str(SCRIPTS / "setup_vm.sh"), "staging"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("Usage:", result.stderr)
+
+    def test_prod_rejects_unpromoted_layout_before_terraform(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cert = root / "proxmox-ca.pem"
+            cert.write_text("offline-test\n")
+            for name in ("terraform", "ansible", "ansible-playbook"):
+                fake = root / name
+                fake.write_text(
+                    '#!/usr/bin/env bash\n'
+                    'echo "Terraform/Ansible must not run" >&2\n'
+                    "exit 9\n"
+                )
+                fake.chmod(0o755)
+            git = root / "git"
+            git.write_text(
+                '#!/usr/bin/env bash\n'
+                'case "$*" in\n'
+                '  *"branch --show-current"*) echo maximize-automation ;;\n'
+                '  *"fetch --no-tags origin production:"*) exit 0 ;;\n'
+                '  *"cat-file -e refs/remotes/origin/production:"*) exit 1 ;;\n'
+                '  *) exit 9 ;;\n'
+                'esac\n'
+            )
+            git.chmod(0o755)
+            env = os.environ.copy()
+            env["PATH"] = f"{root}:{env['PATH']}"
+            env["SSL_CERT_FILE"] = str(cert)
+            env.pop("JOB_MARKET_REF", None)
+            env.pop("TF_WORKSPACE", None)
+            result = subprocess.run(
+                ["bash", str(SCRIPTS / "deploy.sh"), "103", "27", "prod"],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn(
+                "Approved production branch lacks", result.stderr
+            )
+            self.assertNotIn("Terraform/Ansible must not run", result.stderr)
+
     def run_workspace(self, mode, exists=False, inherited_workspace=None):
         with tempfile.TemporaryDirectory() as directory:
             terraform = Path(directory) / "terraform"
