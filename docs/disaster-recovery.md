@@ -291,7 +291,7 @@ directory on the WSL2 workstation:**
 ```bash
 # A separate Terraform worktree/state was already prepared for VM 101.
 ./deploy.sh 101                # Proxmox Terraform + Ansible k3s
-./restore.sh 101               # Restore latest verified prod backup onto VM 101
+./deployment/scripts/restore_backup.sh 101               # Restore latest verified prod backup onto VM 101
 ./destroy.sh 101               # After checking results; explicit destruction prompt
 ```
 
@@ -300,10 +300,10 @@ Every command checks its current Terraform state/configuration; it will not
 take state for VM 100 and silently retarget it to 101. Use the already
 created `~/german-job-market-dr-test` worktree for VM 101, not the
 production checkout. Never copy production `terraform.tfstate` to the DR
-worktree. `deployment/scripts/restore.sh` refuses VM 100 entirely and checks that the SSH
+worktree. `deployment/scripts/restore_backup.sh` refuses VM 100 entirely and checks that the SSH
 destination's hostname and k3s node match Terraform's recorded VM name.
 
-`deployment/scripts/restore.sh 101` selects the most recent successfully checksummed
+`deployment/scripts/restore_backup.sh 101` selects the most recent successfully checksummed
 `$HOME/job-market-off-vm-backups/prod/<timestamp>` unless you provide an
 explicit backup directory as its second argument. It **does not require
 cloning Git onto the replacement VM**. It reads the exact production GitOps
@@ -335,10 +335,10 @@ outputs. For the current test, the required setup is only:
 cd ~/german-job-market-dr-test
 git fetch origin
 git switch --detach origin/disaster-recovery
-bash deployment/scripts/restore.sh 101
+bash deployment/scripts/restore_backup.sh 101
 ```
 
-Use `bash deployment/scripts/restore.sh 101` if its executable bit is not available locally.
+Use `bash deployment/scripts/restore_backup.sh 101` if its executable bit is not available locally.
 If recovery fails halfway through, **do not simply rerun the full command**
 on already-restored PVCs: it intentionally refuses nonempty/pre-existing
 workloads. Inspect the target and resume the appropriate

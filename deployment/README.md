@@ -401,7 +401,7 @@ For a temporary VM, `./destroy.sh 101` additionally asserts that the
 VM deletion command. Do not switch to the original production worktree.
 After destroying VM 101, remove its temporary SSH `permitopen` authorization
 from the jump host. The DR recovery steps themselves can now be driven by
-`./restore.sh 101` from the **same separate worktree**, without cloning
+`./deployment/scripts/restore_backup.sh 101` from the **same separate worktree**, without cloning
 the repository onto the new VM; see the
 [automated DR runbook](../docs/disaster-recovery.md#automated-vm-id-recovery-recommended-for-temporary-test-vms).
 

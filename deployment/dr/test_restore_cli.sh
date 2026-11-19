@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Exercise root restore.sh safeguards without live Proxmox/SSH.
+# Exercise root restore_backup.sh safeguards without live Proxmox/SSH.
 set -euo pipefail
 base="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
 temp="$(mktemp -d)"
 trap 'rm -rf -- "$temp"' EXIT
 mkdir -p "$temp/deployment/scripts" "$temp/deployment/dr" "$temp/bin" "$temp/deployment/terraform"
-cp "$base/deployment/scripts/restore.sh" "$temp/deployment/scripts/restore.sh"
+cp "$base/deployment/scripts/restore_backup.sh" "$temp/deployment/scripts/restore_backup.sh"
 cp "$base/deployment/dr/common.sh" "$temp/deployment/dr/common.sh"
 printf 'vm_id = 101\n' > "$temp/deployment/terraform/terraform.tfvars"
 printf 'fixture\n' > "$temp/deployment/terraform/terraform.tfstate"
@@ -38,16 +38,16 @@ SH
 chmod +x "$temp/bin/"*
 export PATH="$temp/bin:$PATH" MOCK_SSH_PUB="$temp/id_ed25519.pub"
 # 100 is a reserved production ID and must be rejected before any network call.
-out="$(bash "$temp/deployment/scripts/restore.sh" 100 2>&1 || true)"
+out="$(bash "$temp/deployment/scripts/restore_backup.sh" 100 2>&1 || true)"
 [[ "$out" == *"Refusing recovery into VM 100"* ]] ||
   { printf 'Expected VM 100 refusal, got: %s\n' "$out" >&2; exit 1; }
 # Even a prepared DR worktree cannot retarget a Terraform state for VM 100.
-out="$(MOCK_MANAGED_ID=100 bash "$temp/deployment/scripts/restore.sh" 101 2>&1 || true)"
+out="$(MOCK_MANAGED_ID=100 bash "$temp/deployment/scripts/restore_backup.sh" 101 2>&1 || true)"
 [[ "$out" == *"does not match Terraform state"* ]] ||
   { printf 'Expected state mismatch rejection, got: %s\n' "$out" >&2; exit 1; }
 # With the matching state, the SSH/k3s node identity guard must reject a
 # production host before inspecting archives or making changes.
-out="$(MOCK_MANAGED_ID=101 bash "$temp/deployment/scripts/restore.sh" 101 2>&1 || true)"
+out="$(MOCK_MANAGED_ID=101 bash "$temp/deployment/scripts/restore_backup.sh" 101 2>&1 || true)"
 [[ "$out" == *"Wrong destination"* ]] ||
   { printf 'Expected wrong-node rejection, got: %s\n' "$out" >&2; exit 1; }
 echo "Root restore CLI safeguards PASSED"

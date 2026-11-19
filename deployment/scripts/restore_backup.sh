@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Recover a VERIFIED prod backup onto an already provisioned, disposable VM.
-# Run on the workstation: ./deployment/scripts/restore.sh 101 [BACKUP_DIRECTORY]
+# Run on the workstation: ./deployment/scripts/restore_backup.sh 101 [BACKUP_DIRECTORY]
 # VM ID is an assertion against the CURRENT independent Terraform state.
 set -euo pipefail
 
 usage() {
-  echo "Usage: ./deployment/scripts/restore.sh VM_ID [VERIFIED_PROD_BACKUP_DIR]" >&2
+  echo "Usage: ./deployment/scripts/restore_backup.sh VM_ID [VERIFIED_PROD_BACKUP_DIR]" >&2
   echo "Requires a separate VM-specific Terraform state (e.g. the DR worktree)." >&2
   exit 2
 }
