@@ -13,6 +13,8 @@ terraform_vm_workspace() {
         echo "ERROR: TF_WORKSPACE conflicts with requested $VM_WORKSPACE." >&2
         return 1
     fi
+    # Clear a matching inherited override while selecting; export it again afterward.
+    unset TF_WORKSPACE
     # Terraform must initialize before querying or creating local workspaces.
     terraform -chdir="$TF_DIR" init -input=false
     workspaces="$(terraform -chdir="$TF_DIR" workspace list)"

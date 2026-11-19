@@ -81,6 +81,13 @@ class VmWorkspaceShellTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Selected: vm-103", result.stdout)
 
+    def test_matching_inherited_workspace_is_supported(self):
+        result = self.run_workspace(
+            "create", exists=True, inherited_workspace="vm-103"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Selected: vm-103", result.stdout)
+
     def test_missing_workspace_cannot_be_destroyed(self):
         result = self.run_workspace("existing")
         self.assertNotEqual(result.returncode, 0)
