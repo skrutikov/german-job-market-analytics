@@ -7,7 +7,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -16,7 +15,11 @@ class BackupTargetTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        for directory in ("deployment/scripts", "deployment/dr", "deployment/terraform"):
+        for directory in (
+            "deployment/scripts",
+            "deployment/dr",
+            "deployment/terraform",
+        ):
             (self.root / directory).mkdir(parents=True)
         self.bin = self.root / "bin"
         self.bin.mkdir()
