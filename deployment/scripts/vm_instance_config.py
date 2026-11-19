@@ -95,8 +95,7 @@ def verify(terraform_dir: Path, vm_id: int) -> str:
     file = instance_file(terraform_dir, vm_id)
     instance = load_instance(file)
     if (
-        set(instance)
-        != {"create_vm", "vm_id", "vm_name", "vm_ipv4_cidr"}
+        set(instance) != {"create_vm", "vm_id", "vm_name", "vm_ipv4_cidr"}
         or instance["create_vm"] is not True
         or instance["vm_id"] != vm_id
         or instance["vm_name"] != f"job-market-ubuntu-{vm_id}"
@@ -110,7 +109,9 @@ def verify(terraform_dir: Path, vm_id: int) -> str:
         or interface.ip == gateway
         or interface.ip in {network.network_address, network.broadcast_address}
     ):
-        raise ValueError(f"Instance address does not match the configured subnet: {file}")
+        raise ValueError(
+            f"Instance address does not match the configured subnet: {file}"
+        )
     check_unique_ip(terraform_dir, vm_id, str(interface))
     return str(interface)
 

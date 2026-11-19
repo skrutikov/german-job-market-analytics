@@ -1,11 +1,12 @@
 # Copy this file to terraform.tfvars (Git-ignored), then review and update the values.
 # Do NOT commit real credentials, Terraform state or plan files.
-# Example configuration for one Ubuntu VM on the Proxmox host.
-# Change VM ID and IP to available, authorized values for your environment.
+# Shared defaults for automated per-VM Terraform workspaces.
+# Scripts generate instances/vm-ID.tfvars.json with VM-specific values.
+# vm_ipv4_cidr below selects the /24 subnet; the last octet comes from deploy.sh.
 # Terraform creates a new VM; it does not adopt existing VMs.
 
-# Safety switch: enable only after reviewing the configuration and state.
-# IMPORTANT: changing it back to false after creation would plan VM destruction.
+# Shared default remains false; per-VM files override it to true.
+# Do not change this for resources still managed in legacy default state.
 create_vm           = false
 node_name           = "B2C-DevOps-Inter-Bootcamp-SEP26-group-5" # Exact Proxmox node name
 vm_id               = 100                                     # Must be available on the Proxmox host
@@ -28,7 +29,7 @@ dns_servers         = ["1.1.1.1", "8.8.8.8"] # Public DNS: Cloudflare and Google
 
 # Cloud-Init creates this Ubuntu account inside the new VM (not on Proxmox).
 vm_username         = "group3"                  # Choose a valid Linux username
-ssh_public_key_path = "~/.ssh/id_ed25519.pub"   # Local SSH PUBLIC key; see infrastructure/README.md
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"   # Local SSH PUBLIC key; see deployment/README.md
 
 # Download the Ubuntu Cloud Image manually through the Proxmox web interface.
 # Use the exact identifier shown by: pvesm list local --content import

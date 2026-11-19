@@ -14,8 +14,7 @@ class InstanceConfigurationTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         (self.root / "terraform.tfvars").write_text(
-            'vm_ipv4_cidr = "10.20.20.20/24"\n'
-            'vm_gateway = "10.20.20.1"\n',
+            'vm_ipv4_cidr = "10.20.20.20/24"\n' 'vm_gateway = "10.20.20.1"\n',
             encoding="utf-8",
         )
 
@@ -24,9 +23,7 @@ class InstanceConfigurationTests(unittest.TestCase):
         self.assertEqual(prepare(self.root, 103, "25"), "10.20.20.25/24")
         self.assertEqual(prepare(self.root, 104, "26"), "10.20.20.26/24")
         self.assertEqual(verify(self.root, 103), "10.20.20.25/24")
-        config = json.loads(
-            (self.root / "instances/vm-103.tfvars.json").read_text()
-        )
+        config = json.loads((self.root / "instances/vm-103.tfvars.json").read_text())
         self.assertEqual(config["vm_id"], 103)
         self.assertTrue(config["create_vm"])
         self.assertEqual(config["vm_name"], "job-market-ubuntu-103")
@@ -53,8 +50,7 @@ class InstanceConfigurationTests(unittest.TestCase):
     def test_rejects_changed_subnet_and_mutated_identity(self):
         prepare(self.root, 103, "25")
         (self.root / "terraform.tfvars").write_text(
-            'vm_ipv4_cidr = "10.20.30.20/24"\n'
-            'vm_gateway = "10.20.30.1"\n'
+            'vm_ipv4_cidr = "10.20.30.20/24"\n' 'vm_gateway = "10.20.30.1"\n'
         )
         with self.assertRaisesRegex(ValueError, "configured subnet"):
             verify(self.root, 103)

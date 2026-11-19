@@ -6,7 +6,7 @@ set -euo pipefail
 
 usage() {
   echo "Usage: ./deployment/scripts/restore_backup.sh VM_ID [VERIFIED_PROD_BACKUP_DIR]" >&2
-  echo "Requires a separate VM-specific Terraform state (e.g. the DR worktree)." >&2
+  echo "Requires a provisioned vm-VM_ID workspace and its instance variables." >&2
   exit 2
 }
 (( $# == 1 || $# == 2 )) || usage
@@ -20,8 +20,11 @@ source "$repo_root/deployment/dr/common.sh"
 for program in terraform git tar python3 timeout age sha256sum; do
   command -v "$program" >/dev/null || die "Missing program: $program"
 done
-[[ -s "$tf_dir/terraform.tfstate" && -f "$tf_dir/terraform.tfvars" ]] ||
-  die "No local VM-specific Terraform state/config. Use your existing DR worktree; never copy production state."
+VM_ID="$vm_id"
+source "$repo_root/deployment/scripts/terraform_vm_workspace.sh"
+config_cidr="$(python3 "$repo_root/deployment/scripts/vm_instance_config.py" \
+  verify "$tf_dir" "$vm_id")" || die "Missing or invalid VM-specific Terraform configuration"
+terraform_vm_workspace existing
 
 # Do not allow the VM ID argument to select or overwrite another Terraform
 # state. The local state and tfvars must ALREADY identify exactly this VM.
@@ -33,8 +36,9 @@ state_name="$(terraform -chdir="$tf_dir" output -raw managed_vm_name)"
 state_cidr="$(terraform -chdir="$tf_dir" output -raw managed_vm_ipv4)"
 state_user="$(terraform -chdir="$tf_dir" output -raw managed_vm_username)"
 ssh_pub="$(terraform -chdir="$tf_dir" output -raw managed_vm_ssh_public_key_path)"
-configured_id="$(awk -F= '$1 ~ /^[[:space:]]*vm_id[[:space:]]*$/ { x=$2; sub(/#.*/, "", x); gsub(/[[:space:]]/, "", x); print x }' "$tf_dir/terraform.tfvars")"
-[[ "$vm_id" == "$state_id" && "$vm_id" == "$configured_id" ]] ||
+configured_id="$vm_id"
+[[ "$vm_id" == "$state_id" && "$vm_id" == "$configured_id" &&
+   "$state_cidr" == "$config_cidr" ]] ||
   die "VM ID $vm_id does not match Terraform state ($state_id) and tfvars ($configured_id); refusing."
 [[ "$state_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ &&
    "$state_user" =~ ^[a-z_][a-z0-9_-]*$ &&
@@ -169,7 +173,7 @@ remote "sudo -n sysctl -w vm.max_map_count=262144" >/dev/null
 remote_tmp="$(remote 'mktemp -d -t job-market-dr-manifests.XXXXXXXX')"
 [[ "$remote_tmp" =~ ^/tmp/job-market-dr-manifests\.[a-zA-Z0-9]+$ ]] ||
   die "Unsafe temporary path returned by VM"
-tar -C "$tmp" -czf - kubernetes |
+tar -C "$tmp" -czf - deployment/kubernetes |
   remote "tar -C '$remote_tmp' -xzf -"
 remote "sudo -n k3s kubectl apply -k '$remote_tmp/deployment/kubernetes/overlays/prod'"
 

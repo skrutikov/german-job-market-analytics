@@ -18,6 +18,45 @@ Run these commands from the repository root on the **operator workstation** (not
 
 The `deployment/dr/` directory contains lower-level disaster-recovery helpers, including `deployment/dr/restore.sh` for individual restore stages. See the [disaster-recovery runbook](../docs/disaster-recovery.md) for prerequisites and manual recovery.
 
+## Automated, independent VM deployments
+
+**One-time setup:** Copy `deployment/terraform/terraform.tfvars.example` to the
+Git-ignored `deployment/terraform/terraform.tfvars`, then configure your actual
+Proxmox node, VNet, gateway, Cloud Image, SSH key and resource sizes.
+The `vm_ipv4_cidr` in this shared file defines the **/24 subnet**, not the
+address of every VM. Keep `create_vm = false` in the shared file: the
+per-VM file overrides it to `true` only for the selected workspace.
+
+From the repository root on your workstation:
+
+```bash
+bash deployment/scripts/deploy.sh 103 25    # workspace vm-103, VM 103 at ...25/24
+bash deployment/scripts/deploy.sh 104 26    # independent VM 104 at ...26/24
+bash deployment/scripts/destroy.sh 103      # destroy VM 103 only (confirmation)
+```
+
+For example, with `10.20.20.0/24` configured, VM 103 uses
+`10.20.20.25/24`. With the current sample network `10.10.10.0/24`,
+it uses `10.10.10.25/24`. The host octet must be 2–254, not the gateway,
+and cannot duplicate another locally configured instance IP.
+
+Terraform stores isolated states in `vm-103`, `vm-104`, etc., and generates
+`deployment/terraform/instances/vm-103.tfvars.json` for each VM.
+These files, plans and workspace states are Git-ignored. Re-running with
+the same VM ID and IP reuses the state; attempting to reassign an existing
+VM ID to another IP fails. Destroying a VM leaves its empty workspace and
+configuration available for later redeployment.
+
+**Important:** A VM managed in Terraform's old `default` workspace is
+not automatically migrated into `vm-ID`. Do not create a second
+workspace for an already-existing VM ID. Your Proxmox host still needs the
+Cloud Image, VNet, VM-specific API permissions and jump account configured,
+and the script still requests explicit approval for changes.
+
+After provisioning, `deploy.sh` waits for Cloud-Init, then invokes Ansible
+to install and verify k3s. The application bootstrap remains a separate
+step using `deployment/scripts/setup_vm.sh`.
+
 ## Deployment overview
 
 - **One-time Proxmox preparation:** download the Ubuntu Cloud Image, verify the NAT VNet, create the API token, and grant it the shared storage and VNet permissions (Section 2). These actions require authorized Proxmox administration.
