@@ -14,7 +14,7 @@ Run Terraform and Ansible from the **local machine**, using a Linux-compatible c
 Run these commands from the repository root on the **operator workstation** (not inside the VM):
 
 - `bash deployment/scripts/create_backup.sh 103 dev` creates a verified, encrypted backup of the `dev` namespace on VM 103, obtaining its SSH address and key from workspace `vm-103`. Use `prod` for a VM with the production namespace deployed. The existing `create_backup.sh prod k3s-vm` SSH-alias form remains supported. Backups require the configured age identity and approval for a short maintenance interruption.
-- `bash deployment/scripts/restore_backup.sh 101` restores the latest verified production backup onto an already provisioned recovery VM, with a matching per-VM Terraform workspace.
+- `bash deployment/scripts/restore_backup.sh 104 29 prod` checks the Proxmox VM ACL with an operator confirmation, provisions only the VM and k3s via `deploy.sh --infra-only`, then restores the latest verified production backup. It preserves the empty production namespace until restored data and workloads are ready. The older `restore_backup.sh 104 [BACKUP_DIR]` syntax still works for an existing recovery VM.
 
 **Backing up and restoring are not symmetric:** backup accepts either namespace on an existing VM; `restore_backup.sh` deliberately restores a verified **production** backup to a different, empty recovery VM. It does not overwrite a live production installation.
 

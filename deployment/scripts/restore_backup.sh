@@ -1,22 +1,61 @@
 #!/usr/bin/env bash
-# Recover a VERIFIED prod backup onto an already provisioned, disposable VM.
-# Run on the workstation: ./deployment/scripts/restore_backup.sh 101 [BACKUP_DIRECTORY]
-# VM ID is an assertion against the CURRENT independent Terraform state.
+# Recover a VERIFIED prod backup onto a disposable VM, optionally provisioning it first.
+# Usage (automated): ./deployment/scripts/restore_backup.sh 104 29 prod [BACKUP_DIRECTORY]
+# Usage (existing VM): ./deployment/scripts/restore_backup.sh 104 [BACKUP_DIRECTORY]
+# The VM ID must match its isolated Terraform workspace.
 set -euo pipefail
 
 usage() {
-  echo "Usage: ./deployment/scripts/restore_backup.sh VM_ID [VERIFIED_PROD_BACKUP_DIR]" >&2
-  echo "Requires a provisioned vm-VM_ID Terraform workspace." >&2
+  echo "Usage: ./deployment/scripts/restore_backup.sh VM_ID IP_OCTET prod [VERIFIED_PROD_BACKUP_DIR]" >&2
+  echo "   or: ./deployment/scripts/restore_backup.sh VM_ID [VERIFIED_PROD_BACKUP_DIR]  # existing VM" >&2
   exit 2
 }
-(( $# == 1 || $# == 2 )) || usage
+(( $# >= 1 && $# <= 4 )) || usage
 vm_id="$1"
-[[ "$vm_id" =~ ^[0-9]+$ ]] && (( vm_id > 100 )) ||
+[[ "$vm_id" =~ ^[1-9][0-9]{2,8}$ ]] && (( vm_id > 100 )) ||
   { echo "ERROR: Refusing recovery into VM 100 or invalid VM ID." >&2; exit 1; }
+auto_provision=false
+backup_arg=""
+if (( $# >= 3 )); then
+  ip_octet="$2"
+  restore_environment="$3"
+  [[ "$restore_environment" == prod ]] ||
+    { echo "ERROR: Automated restore currently supports only prod." >&2; exit 2; }
+  [[ "$ip_octet" =~ ^(0|[1-9][0-9]{0,2})$ ]] &&
+    (( ip_octet >= 2 && ip_octet <= 254 )) || usage
+  backup_arg="${4:-}"
+  auto_provision=true
+else
+  backup_arg="${2:-}"
+fi
 
 repo_root="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
 tf_dir="$repo_root/deployment/terraform"
 source "$repo_root/deployment/dr/common.sh"
+
+if [[ "$auto_provision" == true ]]; then
+  echo "=================================================="
+  echo "BEFORE PROVISIONING RECOVERY VM $vm_id"
+  echo "=================================================="
+  echo "On the Proxmox HOST as root, verify the API token's VM permissions:"
+  echo
+  printf 'pveum user token permissions root1@pve terraform --path /vms/%s\n' "$vm_id"
+  echo
+  echo "Check for VM.Allocate and VM.Config.* privileges; nonempty output"
+  echo "alone is NOT sufficient. If missing, grant this VM's ACL:"
+  printf 'pveum acl modify /vms/%s --roles PVEVMAdmin --users root1@pve --tokens %s\n' \
+    "$vm_id" "'root1@pve!terraform'"
+  echo
+  echo "Use only an approved, unused recovery VM ID. Never grant cluster-wide permissions."
+  [[ -t 0 ]] || die "Interactive VM-permissions confirmation is required"
+  read -rp "After verifying the VM $vm_id permissions on Proxmox, type YES: " answer
+  [[ "$answer" == YES ]] || die "Recovery cancelled before VM provisioning"
+  echo "Provisioning VM $vm_id at host octet $ip_octet (k3s only; NO production application)..."
+  bash "$repo_root/deployment/scripts/deploy.sh" "$vm_id" "$ip_octet" prod --infra-only ||
+    die "VM provisioning failed or was cancelled; not restoring any data"
+  echo "Infrastructure is ready; now verifying the recovery target and backup."
+fi
+
 for program in terraform git tar python3 timeout age sha256sum; do
   command -v "$program" >/dev/null || die "Missing program: $program"
 done
@@ -68,7 +107,7 @@ for kind in deployments pvc jobs cronjobs; do
 done
 
 # Select newest COMPLETED prod backup unless a specific path was supplied.
-backup="${2:-${DR_BACKUP_DIR:-}}"
+backup="${backup_arg:-${DR_BACKUP_DIR:-}}"
 if [[ -z "$backup" ]]; then
   for candidate in "$HOME/job-market-off-vm-backups/prod"/*; do
     [[ -d "$candidate" && -s "$candidate/SHA256SUMS" ]] || continue
@@ -79,7 +118,7 @@ if [[ -z "$backup" ]]; then
 fi
 [[ -n "$backup" && "$backup" == /* && -d "$backup" &&
    -s "$backup/SHA256SUMS" && -s "$backup/verification.txt" ]] ||
-  die "No verified prod backup found. Supply its absolute path as argument 2."
+  die "No verified prod backup found. Supply its absolute path as the last argument."
 identity="${DR_IDENTITY:-$HOME/.config/job-market-dr/identity.txt}"
 [[ -r "$identity" ]] || die "Missing age private identity"
 grep -Fxq "Namespace: prod" "$backup/backup-metadata.txt" ||

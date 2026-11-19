@@ -242,7 +242,7 @@ echo "Review the plan for VM $TARGET_VM_ID ($VM_CIDR) in workspace $VM_WORKSPACE
 read -rp "Type 'apply $TARGET_VM_ID' to apply the saved plan: " CONFIRM
 if [[ "$CONFIRM" != "apply $TARGET_VM_ID" ]]; then
     echo "Deployment cancelled; no Terraform changes applied."
-    exit 0
+    exit 1
 fi
 terraform -chdir="$TF_DIR" apply "$PLAN"
 
