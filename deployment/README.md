@@ -8,6 +8,16 @@ This guide explains how to provision an Ubuntu virtual machine on Proxmox VE usi
 
 Run Terraform and Ansible from the **local machine**, using a Linux-compatible command-line environment with this repository checked out. The Proxmox host acts as an SSH jump server, and the Ubuntu VM is the Ansible target.
 
+
+## Backup and restore commands
+
+Run these commands from the repository root on the **operator workstation** (not inside the VM):
+
+- `bash deployment/scripts/create_backup.sh prod k3s-vm` creates a verified, encrypted backup of the `prod` namespace. It requires the configured age identity and approval for a short maintenance interruption.
+- `bash deployment/scripts/restore_backup.sh 101` restores the latest verified production backup onto an already provisioned recovery VM, with a matching separate Terraform state.
+
+The `deployment/dr/` directory contains lower-level disaster-recovery helpers, including `deployment/dr/restore.sh` for individual restore stages. See the [disaster-recovery runbook](../docs/disaster-recovery.md) for prerequisites and manual recovery.
+
 ## Deployment overview
 
 - **One-time Proxmox preparation:** download the Ubuntu Cloud Image, verify the NAT VNet, create the API token, and grant it the shared storage and VNet permissions (Section 2). These actions require authorized Proxmox administration.

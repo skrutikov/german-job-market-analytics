@@ -80,7 +80,7 @@ cannot decrypt the backup.
 
 1. Pick `dev` or `prod` and confirm sufficient free space on the
    workstation. **No manual recording of image tags or Git commits is needed.**
-   `deployment/dr/backup.sh` queries the actual Kubernetes Deployment images and Argo CD
+   `deployment/scripts/create_backup.sh` queries the actual Kubernetes Deployment images and Argo CD
    and writes `backup-metadata.txt` beside the encrypted backup files.
    For `prod`, Argo CD tracks `production`, which may differ from the
    Git branch checked out on either the workstation or the VM.
@@ -101,7 +101,7 @@ cannot decrypt the backup.
 3. On the **workstation**, execute:
 
    ```bash
-   bash deployment/dr/backup.sh prod k3s-vm
+   bash deployment/scripts/create_backup.sh prod k3s-vm
    ```
 
    The script streams a consistent custom PostgreSQL dump, the namespace
@@ -159,7 +159,7 @@ cannot decrypt the backup.
    Install Docker on the trusted workstation, then run:
 
    ```bash
-   DR_TEST_DB_RESTORE=1 bash deployment/dr/backup.sh prod k3s-vm
+   DR_TEST_DB_RESTORE=1 bash deployment/scripts/create_backup.sh prod k3s-vm
    ```
 
    This restores the actual dump into a temporary, network-isolated local
@@ -180,7 +180,7 @@ full isolated restore drill.
 
 ## Finalize a fully copied backup after a verification-only failure
 
-If `deployment/dr/backup.sh` has already copied all encrypted files but failed **only
+If `deployment/scripts/create_backup.sh` has already copied all encrypted files but failed **only
 at the verification step** (for example because an older verifier expected
 five instead of four arguments), the source PVCs do **not** need to be copied
 again. This avoids another Airflow/Grafana maintenance interruption.
@@ -266,7 +266,7 @@ sudo k3s kubectl -n argocd get application job-market-prod
 
 On the workstation, an incomplete backup directory **without a valid
 `SHA256SUMS`** must not be used for recovery. Rerun
-`bash deployment/dr/backup.sh prod k3s-vm` from an updated
+`bash deployment/scripts/create_backup.sh prod k3s-vm` from an updated
 `disaster-recovery` checkout. It creates a new timestamped directory.
 If the node-path preflight fails, check the PVC/PV storage layout and
 passwordless sudo permissions rather than disabling the safety check.

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Run on an operator workstation, never on the Proxmox/k3s VM.
-# Usage: bash deployment/dr/backup.sh prod k3s-vm (or specify recipient and backup root)
+# Usage: bash deployment/scripts/create_backup.sh prod k3s-vm (or specify recipient and backup root)
 set -euo pipefail
-source "$(dirname "$0")/common.sh"
-source "$(dirname "$0")/maintenance.sh"
+source "$(dirname "$0")/../dr/common.sh"
+source "$(dirname "$0")/../dr/maintenance.sh"
 
 (( $# == 2 || $# == 4 )) ||
-  die "Usage: bash deployment/dr/backup.sh dev|prod SSH_HOST [AGE_RECIPIENT LOCAL_BACKUP_ROOT]"
+  die "Usage: bash deployment/scripts/create_backup.sh dev|prod SSH_HOST [AGE_RECIPIENT LOCAL_BACKUP_ROOT]"
 ns="$1"; validate_namespace "$ns"
 require_tools
 command -v python3 >/dev/null || die "python3 is required"

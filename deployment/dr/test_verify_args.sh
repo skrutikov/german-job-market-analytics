@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Guard against a mismatch between backup.sh and verify_backup.sh arguments.
+# Guard against a mismatch between create_backup.sh and verify_backup.sh arguments.
 set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 four="$(bash "$repo_root/deployment/dr/verify_backup.sh" prod k3s-vm /nonexistent /nonexistent 2>&1 || true)"

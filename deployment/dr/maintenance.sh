@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Transactional maintenance window for offline copies of SQLite-backed PVCs.
-# Sourced by backup.sh; uses remote(), die() and check_quiesced().
+# Sourced by deployment/scripts/create_backup.sh; uses remote(), die() and check_quiesced().
 maintenance_restore_auto=""
 maintenance_restore_airflow=""
 maintenance_restore_grafana=""
