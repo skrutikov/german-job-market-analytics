@@ -70,20 +70,20 @@ class VmWorkspaceShellTests(unittest.TestCase):
             for name in ("terraform", "ansible", "ansible-playbook"):
                 fake = root / name
                 fake.write_text(
-                    '#!/usr/bin/env bash\n'
+                    "#!/usr/bin/env bash\n"
                     'echo "Terraform/Ansible must not run" >&2\n'
                     "exit 9\n"
                 )
                 fake.chmod(0o755)
             git = root / "git"
             git.write_text(
-                '#!/usr/bin/env bash\n'
+                "#!/usr/bin/env bash\n"
                 'case "$*" in\n'
                 '  *"branch --show-current"*) echo maximize-automation ;;\n'
                 '  *"fetch --no-tags origin production:"*) exit 0 ;;\n'
                 '  *"cat-file -e refs/remotes/origin/production:"*) exit 1 ;;\n'
-                '  *) exit 9 ;;\n'
-                'esac\n'
+                "  *) exit 9 ;;\n"
+                "esac\n"
             )
             git.chmod(0o755)
             env = os.environ.copy()
@@ -99,9 +99,7 @@ class VmWorkspaceShellTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(result.returncode, 1, result.stderr)
-            self.assertIn(
-                "Approved production branch lacks", result.stderr
-            )
+            self.assertIn("Approved production branch lacks", result.stderr)
             self.assertNotIn("Terraform/Ansible must not run", result.stderr)
 
     def run_workspace(self, mode, exists=False, inherited_workspace=None):
