@@ -4,7 +4,7 @@ set -euo pipefail
 # Optional VM ID is an assertion, NEVER a switch to another Terraform state.
 # Use a separate Terraform working directory/state for each managed VM.
 if (( $# > 1 )) || { (( $# == 1 )) && [[ ! "$1" =~ ^[0-9]+$ ]]; }; then
-    echo "Usage: ./destroy.sh [EXPECTED_VM_ID]" >&2
+    echo "Usage: ./deployment/scripts/destroy.sh [EXPECTED_VM_ID]" >&2
     exit 2
 fi
 if (( $# == 1 )); then
@@ -18,8 +18,8 @@ fi
 # Destroy ONLY the Ubuntu VM managed by this Terraform state.
 # An existing Proxmox VM must never be deleted just because its ID was typed
 # into terraform.tfvars; the managed VM ID and configured VM ID must match.
-REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-TF_DIR="$REPO_ROOT/infrastructure/terraform"
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+TF_DIR="$REPO_ROOT/deployment/terraform"
 VM_RESOURCE='proxmox_virtual_environment_vm.k3s[0]'
 
 PROXMOX_HOST="${PROXMOX_HOST:-195.154.103.231}"
@@ -35,7 +35,7 @@ if [[ ! -f "$TF_DIR/terraform.tfvars" ]]; then
     exit 1
 fi
 
-# Use the same (full) API token format as deploy.sh.
+# Use the same (full) API token format as deployment/scripts/deploy.sh.
 if [[ -z "${PROXMOX_VE_API_TOKEN:-}" ]]; then
     read -rsp "Enter full Proxmox API token (ID=secret): " PROXMOX_VE_API_TOKEN
     echo
@@ -50,7 +50,7 @@ terraform -chdir="$TF_DIR" init -input=false
 terraform -chdir="$TF_DIR" validate
 
 # Only delete a VM tracked by THIS local Terraform state, not an arbitrary
-# Proxmox VM with the same number. Reuse the state created by deploy.sh.
+# Proxmox VM with the same number. Reuse the state created by deployment/scripts/deploy.sh.
 if ! terraform -chdir="$TF_DIR" state list | grep -Fxq "$VM_RESOURCE"; then
     echo "ERROR: $VM_RESOURCE is not in this Terraform state; nothing to destroy." >&2
     exit 1

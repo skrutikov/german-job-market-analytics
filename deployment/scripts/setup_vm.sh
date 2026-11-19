@@ -9,7 +9,7 @@ if (( EUID == 0 )); then
 fi
 command -v sudo >/dev/null || { echo "sudo is required." >&2; exit 1; }
 command -v k3s >/dev/null || {
-    echo "k3s is missing. First create the VM with ./deploy.sh on the local machine." >&2
+    echo "k3s is missing. First create the VM with ./deployment/scripts/deploy.sh on the local machine." >&2
     exit 1
 }
 
@@ -63,10 +63,10 @@ printf 'vm.max_map_count=262144\n' |
     sudo tee /etc/sysctl.d/99-elasticsearch.conf >/dev/null
 
 echo "Deploying the dev Kubernetes application..."
-sudo bash "$repo_dir/kubernetes/deploy.sh" dev
+sudo bash "$repo_dir/deployment/kubernetes/deploy.sh" dev
 
 echo "Installing and configuring Argo CD..."
-sudo bash "$repo_dir/argocd/bootstrap.sh" main
+sudo bash "$repo_dir/deployment/argocd/bootstrap.sh" main
 
 echo "Checking the final cluster state..."
 sudo k3s kubectl get nodes
@@ -74,4 +74,4 @@ sudo k3s kubectl -n dev get pods
 sudo k3s kubectl -n argocd get application job-market-dev
 
 echo "VM application setup complete."
-echo "To start the first ETL run, execute: bash $repo_dir/init_airflow.sh"
+echo "To start the first ETL run, execute: bash $repo_dir/deployment/scripts/init_airflow.sh"

@@ -4,7 +4,7 @@ set -euo pipefail
 
 namespace="${1:-dev}"
 if [[ "$namespace" != dev && "$namespace" != prod ]]; then
-    echo "Usage: bash check_airflow_state.sh [dev|prod]" >&2
+    echo "Usage: bash deployment/scripts/check_airflow_state.sh [dev|prod]" >&2
     exit 2
 fi
 command -v sudo >/dev/null || { echo "sudo is required." >&2; exit 1; }

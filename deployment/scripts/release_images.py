@@ -2,10 +2,10 @@
 """Pin both GHCR application images to one tested immutable main-commit tag.
 
 Usage:
-    python scripts/release_images.py set-dev <40-character-commit-sha>
-    python scripts/release_images.py check-dev <40-character-commit-sha>
-    python scripts/release_images.py promote-prod <40-character-commit-sha>
-    python scripts/release_images.py check-prod <40-character-commit-sha>
+    python deployment/scripts/release_images.py set-dev <40-character-commit-sha>
+    python deployment/scripts/release_images.py check-dev <40-character-commit-sha>
+    python deployment/scripts/release_images.py promote-prod <40-character-commit-sha>
+    python deployment/scripts/release_images.py check-prod <40-character-commit-sha>
 """
 
 import argparse

@@ -4,7 +4,7 @@ set -euo pipefail
 # Optional VM ID is an assertion, NEVER a switch to another Terraform state.
 # Use a separate Terraform working directory/state for each managed VM.
 if (( $# > 1 )) || { (( $# == 1 )) && [[ ! "$1" =~ ^[0-9]+$ ]]; }; then
-    echo "Usage: ./deploy.sh [EXPECTED_VM_ID]" >&2
+    echo "Usage: ./deployment/scripts/deploy.sh [EXPECTED_VM_ID]" >&2
     exit 2
 fi
 if (( $# == 1 )); then
@@ -17,10 +17,10 @@ fi
 
 # Provision the Ubuntu VM with Terraform, then install/configure k3s with Ansible.
 # Proxmox bootstrap and the restricted SSH jump account must be prepared first
-# as documented in infrastructure/README.md. App deployment is a later step.
-REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-TF_DIR="$REPO_ROOT/infrastructure/terraform"
-ANSIBLE_DIR="$REPO_ROOT/infrastructure/ansible"
+# as documented in deployment/README.md. App deployment is a later step.
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+TF_DIR="$REPO_ROOT/deployment/terraform"
+ANSIBLE_DIR="$REPO_ROOT/deployment/ansible"
 
 # Example endpoint; override PROXMOX_HOST for other Proxmox installations.
 PROXMOX_HOST="${PROXMOX_HOST:-195.154.103.231}"
@@ -44,7 +44,7 @@ fi
 # VM when the controller is missing required local tools.
 for program in ssh ansible ansible-playbook python3; do
     if ! command -v "$program" >/dev/null 2>&1; then
-        echo "ERROR: $program is required to install k3s. See infrastructure/README.md." >&2
+        echo "ERROR: $program is required to install k3s. See deployment/README.md." >&2
         exit 1
     fi
 done
@@ -156,7 +156,7 @@ done
 if [[ "$SSH_READY" != true ]]; then
     echo "ERROR: Cannot reach VM $VM_ID through the SSH jump account." >&2
     echo "Verify jumpuser forwarding, port 22, SSH keys and host-key fingerprints (README Section 4)." >&2
-    echo "The VM is already managed by Terraform; rerun ./deploy.sh after fixing SSH." >&2
+    echo "The VM is already managed by Terraform; rerun ./deployment/scripts/deploy.sh after fixing SSH." >&2
     exit 1
 fi
 

@@ -6,7 +6,7 @@ set -euo pipefail
 namespace="${1:-dev}"
 dag_id="job_market_etl"
 if [[ "$namespace" != dev && "$namespace" != prod ]]; then
-    echo "Usage: bash init_airflow.sh [dev|prod]" >&2
+    echo "Usage: bash deployment/scripts/init_airflow.sh [dev|prod]" >&2
     exit 2
 fi
 for binary in sudo k3s python3; do
@@ -87,5 +87,5 @@ fi
 echo "Most recent DAG runs:"
 "${kubectl[@]}" exec deployment/airflow -- \
     airflow dags list-runs "$dag_id" --limit 5
-echo "For read-only status, run: bash check_airflow_state.sh $namespace"
+echo "For read-only status, run: bash deployment/scripts/check_airflow_state.sh $namespace"
 echo "Note: a later rerun when no ETL is active can trigger another run."

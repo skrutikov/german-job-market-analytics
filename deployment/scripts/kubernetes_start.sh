@@ -8,7 +8,7 @@ action="${2:-start}"
 vm="${JOB_MARKET_VM_SSH_HOST:-k3s-vm}"
 
 if [[ "$environment" != "dev" && "$environment" != "prod" ]]; then
-    echo "Usage: ./kubernetes_start.sh [dev|prod] [start|stop|status]" >&2
+    echo "Usage: ./deployment/scripts/kubernetes_start.sh [dev|prod] [start|stop|status]" >&2
     exit 2
 fi
 if [[ "$action" != "start" && "$action" != "stop" && "$action" != "status" ]]; then
@@ -130,7 +130,7 @@ fi
 if ! curl -fsS --connect-timeout 5 --max-time 15 \
     "http://127.0.0.1:${ports[0]}/nginx-health" >/dev/null; then
     echo "WARNING: SSH is running, but Nginx did not answer. Check VM connectivity and services." >&2
-    echo "Stop and retry: ./kubernetes_start.sh $environment stop" >&2
+    echo "Stop and retry: ./deployment/scripts/kubernetes_start.sh $environment stop" >&2
 fi
 
 echo
@@ -210,5 +210,5 @@ fi
 echo
 echo "Keep these passwords private; they are not saved locally."
 echo "The tunnel stays in the background. To close:"
-echo "  ./kubernetes_stop.sh $environment"
+echo "  ./deployment/scripts/kubernetes_stop.sh $environment"
 echo "======================================"

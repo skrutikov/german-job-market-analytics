@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Recover a VERIFIED prod backup onto an already provisioned, disposable VM.
-# Run on the workstation: ./restore.sh 101 [BACKUP_DIRECTORY]
+# Run on the workstation: ./deployment/scripts/restore.sh 101 [BACKUP_DIRECTORY]
 # VM ID is an assertion against the CURRENT independent Terraform state.
 set -euo pipefail
 
 usage() {
-  echo "Usage: ./restore.sh VM_ID [VERIFIED_PROD_BACKUP_DIR]" >&2
+  echo "Usage: ./deployment/scripts/restore.sh VM_ID [VERIFIED_PROD_BACKUP_DIR]" >&2
   echo "Requires a separate VM-specific Terraform state (e.g. the DR worktree)." >&2
   exit 2
 }
@@ -14,9 +14,9 @@ vm_id="$1"
 [[ "$vm_id" =~ ^[0-9]+$ ]] && (( vm_id > 100 )) ||
   { echo "ERROR: Refusing recovery into VM 100 or invalid VM ID." >&2; exit 1; }
 
-repo_root="$(cd -- "$(dirname -- "$0")" && pwd)"
-tf_dir="$repo_root/infrastructure/terraform"
-source "$repo_root/dr/common.sh"
+repo_root="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
+tf_dir="$repo_root/deployment/terraform"
+source "$repo_root/deployment/dr/common.sh"
 for program in terraform git tar python3 timeout age sha256sum; do
   command -v "$program" >/dev/null || die "Missing program: $program"
 done
@@ -80,7 +80,7 @@ fi
 [[ -n "$backup" && "$backup" == /* && -d "$backup" &&
    -s "$backup/SHA256SUMS" && -s "$backup/verification.txt" ]] ||
   die "No verified prod backup found. Supply its absolute path as argument 2."
-identity="${DR_IDENTITY:-$HOME/.config/job-market-dr/identity.txt}"
+identity="${DR_IDENTITY:-$HOME/.config/job-market-deployment/dr/identity.txt}"
 [[ -r "$identity" ]] || die "Missing age private identity"
 grep -Fxq "Namespace: prod" "$backup/backup-metadata.txt" ||
   die "Selected backup is not from namespace prod"
@@ -130,7 +130,7 @@ run_stage() {
     die "Recovery stage timeout must be an integer >= 30 seconds"
   echo "=== Recovering stage: $stage (timeout: ${max_seconds}s) ==="
   timeout --kill-after=15s "$max_seconds" \
-    bash "$repo_root/dr/restore.sh" prod "$target" "$backup" "$identity" "$stage"
+    bash "$repo_root/deployment/dr/restore.sh" prod "$target" "$backup" "$identity" "$stage"
 }
 
 run_stage prepare
@@ -153,7 +153,7 @@ trap cleanup EXIT
 git -C "$repo_root" archive "$gitops_sha" kubernetes |
   tar -xf - -C "$tmp"
 echo "=== Starting PostgreSQL alone on the recovery VM ==="
-remote "sudo -n k3s kubectl -n prod apply -f -" < "$tmp/kubernetes/base/postgres.yaml"
+remote "sudo -n k3s kubectl -n prod apply -f -" < "$tmp/deployment/kubernetes/base/postgres.yaml"
 remote "sudo -n k3s kubectl -n prod rollout status deployment/postgres --timeout=600s"
 run_stage postgres
 restored_rows="$(remote 'sudo -n k3s kubectl -n prod exec deployment/postgres -- sh -c '"'"'PGPASSWORD="$POSTGRES_PASSWORD" psql -U job_market -d job_market -Atqc "SELECT count(*) FROM jobs"'"'"'')"
@@ -162,8 +162,8 @@ printf 'Recovered PostgreSQL jobs: %s\n' "$restored_rows"
 
 # Deployment manifests are read from the BACKUP-RECORDED revision, not from
 # whatever branch the workstation happens to have checked out.
-overlay="$tmp/kubernetes/overlays/prod/kustomization.yaml"
-bash "$repo_root/dr/sanitize_overlay.sh" "$overlay" "$release_tag"
+overlay="$tmp/deployment/kubernetes/overlays/prod/kustomization.yaml"
+bash "$repo_root/deployment/dr/sanitize_overlay.sh" "$overlay" "$release_tag"
 echo "=== Deploying recovered application (Airflow/alerts disabled) ==="
 remote "sudo -n sysctl -w vm.max_map_count=262144" >/dev/null
 remote_tmp="$(remote 'mktemp -d -t job-market-dr-manifests.XXXXXXXX')"
@@ -171,7 +171,7 @@ remote_tmp="$(remote 'mktemp -d -t job-market-dr-manifests.XXXXXXXX')"
   die "Unsafe temporary path returned by VM"
 tar -C "$tmp" -czf - kubernetes |
   remote "tar -C '$remote_tmp' -xzf -"
-remote "sudo -n k3s kubectl apply -k '$remote_tmp/kubernetes/overlays/prod'"
+remote "sudo -n k3s kubectl apply -k '$remote_tmp/deployment/kubernetes/overlays/prod'"
 
 # Verify isolation policy BEFORE checking application functionality.
 airflow_replicas="$(remote "sudo -n k3s kubectl -n prod get deployment airflow -o jsonpath='{.spec.replicas}'")"
@@ -192,4 +192,4 @@ remote "sudo -n k3s kubectl -n prod exec deployment/backend -- python -c \
 remote "sudo -n k3s kubectl -n prod get deployments,pods,pvc,cronjobs"
 echo "RECOVERY CHECKS PASSED: VM $vm_id, restored jobs $restored_rows."
 echo "Airflow and Alertmanager are deliberately NOT running; validate their restored state in a controlled follow-up."
-echo "After documenting DR results, destroy only VM $vm_id from this same Terraform state with ./destroy.sh $vm_id."
+echo "After documenting DR results, destroy only VM $vm_id from this same Terraform state with ./deployment/scripts/destroy.sh $vm_id."
