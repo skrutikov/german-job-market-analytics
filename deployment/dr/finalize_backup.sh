@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Safely finalize an already copied but incompletely verified backup.
 # Does NOT pause workloads, change Argo CD, or copy any source volumes.
-# Usage: bash dr/finalize_backup.sh prod k3s-vm /abs/path/prod/TIMESTAMP
+# Usage: bash deployment/dr/finalize_backup.sh prod k3s-vm /abs/path/prod/TIMESTAMP
 set -euo pipefail
 source "$(dirname -- "$0")/common.sh"
 
 (( $# == 3 || $# == 4 )) ||
-  die "Usage: bash dr/finalize_backup.sh dev|prod SSH_HOST BACKUP_DIR [AGE_IDENTITY]"
+  die "Usage: bash deployment/dr/finalize_backup.sh dev|prod SSH_HOST BACKUP_DIR [AGE_IDENTITY]"
 ns="$1"; validate_namespace "$ns"
 host="$2"; backup="$3"
 identity="${4:-${DR_IDENTITY:-$HOME/.config/job-market-dr/identity.txt}}"

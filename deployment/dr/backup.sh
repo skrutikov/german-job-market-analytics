@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Run on an operator workstation, never on the Proxmox/k3s VM.
-# Usage: bash dr/backup.sh prod k3s-vm (or specify recipient and backup root)
+# Usage: bash deployment/dr/backup.sh prod k3s-vm (or specify recipient and backup root)
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 source "$(dirname "$0")/maintenance.sh"
 
 (( $# == 2 || $# == 4 )) ||
-  die "Usage: bash dr/backup.sh dev|prod SSH_HOST [AGE_RECIPIENT LOCAL_BACKUP_ROOT]"
+  die "Usage: bash deployment/dr/backup.sh dev|prod SSH_HOST [AGE_RECIPIENT LOCAL_BACKUP_ROOT]"
 ns="$1"; validate_namespace "$ns"
 require_tools
 command -v python3 >/dev/null || die "python3 is required"
@@ -85,12 +85,12 @@ save_stream() {
 printf 'Backing up %s from %s to %s\n' "$ns" "$DR_SSH_HOST" "$output"
 # Record deployed images and the Argo CD Git revision from the live cluster.
 # The VM/workstation Git checkout may be on a different branch.
-repo_root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
+repo_root="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
 remote "sudo -n k3s kubectl -n $ns get deployments backend frontend airflow -o json" \
   > "$output/deployments.json.partial"
 remote "sudo -n k3s kubectl -n argocd get application job-market-$ns -o json" \
   > "$output/argocd.json.partial"
-python3 "$repo_root/dr/record_metadata.py" \
+python3 "$repo_root/deployment/dr/record_metadata.py" \
   --namespace "$ns" --timestamp "$stamp" --ssh-host "$DR_SSH_HOST" \
   --deployments "$output/deployments.json.partial" \
   --application "$output/argocd.json.partial" \
@@ -124,7 +124,7 @@ echo "Production maintenance finished; verifying the saved backup..."
 )
 # Integrity validation is automatic; real DB restore can be enabled with
 # DR_TEST_DB_RESTORE=1 to use an isolated LOCAL postgres:17 Docker container.
-if bash "$repo_root/dr/verify_backup.sh" "$ns" "$DR_SSH_HOST" "$output" "$identity" \
+if bash "$repo_root/deployment/dr/verify_backup.sh" "$ns" "$DR_SSH_HOST" "$output" "$identity" \
     2>&1 | tee "$output/verification.txt.partial"; then
   mv "$output/verification.txt.partial" "$output/verification.txt"
 else

@@ -3,7 +3,7 @@ set -euo pipefail
 
 environment="${1:-}"
 if [[ "$environment" != "dev" && "$environment" != "prod" ]]; then
-    echo "Usage: sudo bash kubernetes/deploy.sh dev|prod" >&2
+    echo "Usage: sudo bash deployment/kubernetes/deploy.sh dev|prod" >&2
     exit 2
 fi
 if (( EUID != 0 )); then
@@ -11,9 +11,9 @@ if (( EUID != 0 )); then
     exit 1
 fi
 
-repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-bash "$repo_root/kubernetes/bootstrap-secrets.sh" "$environment"
-k3s kubectl apply -k "$repo_root/kubernetes/overlays/$environment"
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+bash "$repo_root/deployment/kubernetes/bootstrap-secrets.sh" "$environment"
+k3s kubectl apply -k "$repo_root/deployment/kubernetes/overlays/$environment"
 
 for name in postgres elasticsearch backend frontend nginx \
             prometheus pushgateway alertmanager grafana airflow; do

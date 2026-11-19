@@ -4,7 +4,7 @@
 set -euo pipefail
 source "$(dirname -- "$0")/common.sh"
 (( $# == 4 )) ||
-  die "Usage: bash dr/verify_backup.sh dev|prod SSH_HOST BACKUP_DIR AGE_IDENTITY"
+  die "Usage: bash deployment/dr/verify_backup.sh dev|prod SSH_HOST BACKUP_DIR AGE_IDENTITY"
 ns="$1"; validate_namespace "$ns"
 host="$2"; backup="$3"; identity="$4"
 [[ -n "$host" && "$host" =~ ^[a-zA-Z0-9_.@-]+$ ]] ||

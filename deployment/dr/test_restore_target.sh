@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Ensure restore.sh refuses an unintended Kubernetes node BEFORE any write.
 set -euo pipefail
-repo_root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
+repo_root="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 cat > "$tmp/ssh" <<'SH'
@@ -18,7 +18,7 @@ SH
 chmod +x "$tmp/ssh"
 run_restore() {
   env PATH="$tmp:$PATH" CONFIRM_RESTORE=prod "$@" \
-    bash "$repo_root/dr/restore.sh" prod k3s-dr-test \
+    bash "$repo_root/deployment/dr/restore.sh" prod k3s-dr-test \
       /nonexistent-dr-backup /nonexistent-dr-key prepare 2>&1
 }
 out="$(run_restore DR_EXPECTED_NODE_NAME=job-market-dr-test || true)"

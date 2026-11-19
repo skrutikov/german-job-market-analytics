@@ -80,7 +80,7 @@ fi
 [[ -n "$backup" && "$backup" == /* && -d "$backup" &&
    -s "$backup/SHA256SUMS" && -s "$backup/verification.txt" ]] ||
   die "No verified prod backup found. Supply its absolute path as argument 2."
-identity="${DR_IDENTITY:-$HOME/.config/job-market-deployment/dr/identity.txt}"
+identity="${DR_IDENTITY:-$HOME/.config/job-market-dr/identity.txt}"
 [[ -r "$identity" ]] || die "Missing age private identity"
 grep -Fxq "Namespace: prod" "$backup/backup-metadata.txt" ||
   die "Selected backup is not from namespace prod"
@@ -150,7 +150,7 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
-git -C "$repo_root" archive "$gitops_sha" kubernetes |
+git -C "$repo_root" archive "$gitops_sha" deployment/kubernetes |
   tar -xf - -C "$tmp"
 echo "=== Starting PostgreSQL alone on the recovery VM ==="
 remote "sudo -n k3s kubectl -n prod apply -f -" < "$tmp/deployment/kubernetes/base/postgres.yaml"

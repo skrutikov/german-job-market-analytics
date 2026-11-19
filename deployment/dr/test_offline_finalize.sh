@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Integration test: finalize synthetic encrypted backup with no reachable VM.
 set -euo pipefail
-(( $# == 1 )) || { echo "Usage: bash dr/test_offline_finalize.sh /tmp/dr-test.dump" >&2; exit 2; }
+(( $# == 1 )) || { echo "Usage: bash deployment/dr/test_offline_finalize.sh /tmp/dr-test.dump" >&2; exit 2; }
 source_dump="$1"
 [[ -s "$source_dump" ]] || { echo "Synthetic PostgreSQL dump missing" >&2; exit 1; }
 tmp="$(mktemp -d)"

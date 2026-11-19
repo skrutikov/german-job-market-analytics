@@ -8,8 +8,8 @@ environment="${2:-dev}"
 case "$environment:$revision" in
     dev:main|dev:gitops-pruning|prod:production) ;;
     *)
-        echo "Usage: sudo ./argocd/configure-sync.sh [main|gitops-pruning] [dev]" >&2
-        echo "   or: sudo ./argocd/configure-sync.sh production prod" >&2
+        echo "Usage: sudo ./deployment/argocd/configure-sync.sh [main|gitops-pruning] [dev]" >&2
+        echo "   or: sudo ./deployment/argocd/configure-sync.sh production prod" >&2
         exit 2
         ;;
 esac
@@ -20,8 +20,8 @@ fi
 command -v k3s >/dev/null || { echo "k3s is required." >&2; exit 1; }
 command -v sed >/dev/null || { echo "sed is required." >&2; exit 1; }
 
-repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-application="$repo_root/argocd/application-$environment.yaml"
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+application="$repo_root/deployment/argocd/application-$environment.yaml"
 application_name="job-market-$environment"
 protection="Prune=confirm,Delete=false"
 pvcs=(

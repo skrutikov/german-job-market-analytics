@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Exercise root restore.sh safeguards without live Proxmox/SSH.
 set -euo pipefail
-base="$(cd -- "$(dirname -- "$0")/.." && pwd)"
+base="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
 temp="$(mktemp -d)"
 trap 'rm -rf -- "$temp"' EXIT
-mkdir -p "$temp/dr" "$temp/bin" "$temp/infrastructure/terraform"
+mkdir -p "$temp/deployment/dr" "$temp/bin" "$temp/deployment/terraform"
 cp "$base/restore.sh" "$temp/restore.sh"
-cp "$base/dr/common.sh" "$temp/dr/common.sh"
-printf 'vm_id = 101\n' > "$temp/infrastructure/terraform/terraform.tfvars"
-printf 'fixture\n' > "$temp/infrastructure/terraform/terraform.tfstate"
+cp "$base/deployment/dr/common.sh" "$temp/deployment/dr/common.sh"
+printf 'vm_id = 101\n' > "$temp/deployment/terraform/terraform.tfvars"
+printf 'fixture\n' > "$temp/deployment/terraform/terraform.tfstate"
 printf '%s\n' 'not-a-private-key' > "$temp/id_ed25519"
 cat > "$temp/bin/terraform" <<'SH'
 #!/usr/bin/env bash
