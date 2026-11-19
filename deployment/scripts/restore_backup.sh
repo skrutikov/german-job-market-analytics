@@ -21,6 +21,7 @@ for program in terraform git tar python3 timeout age sha256sum; do
   command -v "$program" >/dev/null || die "Missing program: $program"
 done
 VM_ID="$vm_id"
+TF_DIR="$tf_dir"
 source "$repo_root/deployment/scripts/terraform_vm_workspace.sh"
 config_cidr="$(python3 "$repo_root/deployment/scripts/vm_instance_config.py" \
   verify "$tf_dir" "$vm_id")" || die "Missing or invalid VM-specific Terraform configuration"
