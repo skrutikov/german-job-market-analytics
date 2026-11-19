@@ -8,16 +8,17 @@ if (( $# != 1 )); then
     exit 2
 fi
 VM_ID="$1"
+if [[ ! "$VM_ID" =~ ^[1-9][0-9]{2,8}$ ]]; then
+    echo "ERROR: VM_ID must be between 100 and 999999999." >&2
+    exit 2
+fi
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 TF_DIR="$REPO_ROOT/deployment/terraform"
-TFVARS="$TF_DIR/instances/vm-$VM_ID.tfvars.json"
-PLAN="$TF_DIR/instances/vm-$VM_ID-destroy.tfplan"
+PLAN="$TF_DIR/vm-$VM_ID-destroy.tfplan"
 VM_RESOURCE='proxmox_virtual_environment_vm.k3s[0]'
 source "$REPO_ROOT/deployment/scripts/terraform_vm_workspace.sh"
 
 command -v terraform >/dev/null || { echo "ERROR: Terraform is required." >&2; exit 1; }
-VM_CIDR="$(python3 "$REPO_ROOT/deployment/scripts/vm_instance_config.py" \
-    verify "$TF_DIR" "$VM_ID")" || exit 1
 
 PROXMOX_HOST="${PROXMOX_HOST:-195.154.103.231}"
 export PROXMOX_VE_ENDPOINT="${PROXMOX_VE_ENDPOINT:-https://${PROXMOX_HOST}:8006/}"
@@ -45,8 +46,8 @@ terraform -chdir="$TF_DIR" state list | grep -Fxq "$VM_RESOURCE" || {
 }
 MANAGED_VM_ID="$(terraform -chdir="$TF_DIR" output -raw managed_vm_id)"
 MANAGED_VM_IP="$(terraform -chdir="$TF_DIR" output -raw managed_vm_ipv4)"
-[[ "$MANAGED_VM_ID" == "$VM_ID" && "$MANAGED_VM_IP" == "$VM_CIDR" ]] || {
-    echo "ERROR: Workspace state does not match VM $VM_ID at $VM_CIDR." >&2
+[[ "$MANAGED_VM_ID" == "$VM_ID" && "$MANAGED_VM_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/24$ ]] || {
+    echo "ERROR: Workspace state does not match VM $VM_ID or lacks a valid VM IP." >&2
     exit 1
 }
 if [[ "$VM_ID" == 100 && "${ALLOW_DESTROY_VM100:-false}" != true ]]; then
@@ -54,9 +55,12 @@ if [[ "$VM_ID" == 100 && "${ALLOW_DESTROY_VM100:-false}" != true ]]; then
     exit 1
 fi
 
+MANAGED_VM_NAME="$(terraform -chdir="$TF_DIR" output -raw managed_vm_name)"
 terraform -chdir="$TF_DIR" plan -destroy -target="$VM_RESOURCE" \
-    -var-file="$TFVARS" -out="$PLAN" -input=false
-echo "WARNING: This deletes VM $VM_ID ($VM_CIDR) and its managed disks."
+    -var="create_vm=true" -var="vm_id=$VM_ID" \
+    -var="vm_name=$MANAGED_VM_NAME" -var="vm_ipv4_cidr=$MANAGED_VM_IP" \
+    -out="$PLAN" -input=false
+echo "WARNING: This deletes VM $VM_ID ($MANAGED_VM_IP) and its managed disks."
 echo "Terraform workspace: $VM_WORKSPACE. Unrelated VM workspaces are not touched."
 read -rp "Type 'destroy $VM_ID' to continue: " CONFIRM
 if [[ "$CONFIRM" != "destroy $VM_ID" ]]; then
@@ -64,4 +68,4 @@ if [[ "$CONFIRM" != "destroy $VM_ID" ]]; then
     exit 0
 fi
 terraform -chdir="$TF_DIR" apply "$PLAN"
-echo "Destroyed VM $VM_ID. Workspace and its variables are retained for safe redeployment."
+echo "Destroyed VM $VM_ID. The empty workspace remains for redeployment."

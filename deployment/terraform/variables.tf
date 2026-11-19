@@ -7,7 +7,7 @@ variable "create_vm" {
 variable "node_name" {
   description = "Name of the target Proxmox node."
   type        = string
-  default     = "CHANGE_ME"
+  default     = "B2C-DevOps-Inter-Bootcamp-SEP26-group-5"
 }
 
 variable "vm_id" {

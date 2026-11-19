@@ -12,11 +12,16 @@ RUN_APPLICATION=true
 [[ "${3:-}" == --infra-only ]] && RUN_APPLICATION=false
 VM_ID="$1"
 LAST_OCTET="$2"
+# Validate arguments before reading credentials or touching infrastructure.
+if [[ ! "$VM_ID" =~ ^[1-9][0-9]{2,8}$ || ! "$LAST_OCTET" =~ ^(0|[1-9][0-9]{0,2})$ ]] ||
+   (( LAST_OCTET < 2 || LAST_OCTET > 254 )); then
+    echo "ERROR: VM_ID must be 100–999999999; last IP octet must be 2–254." >&2
+    exit 2
+fi
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 TF_DIR="$REPO_ROOT/deployment/terraform"
 ANSIBLE_DIR="$REPO_ROOT/deployment/ansible"
-TFVARS="$TF_DIR/instances/vm-$VM_ID.tfvars.json"
-PLAN="$TF_DIR/instances/vm-$VM_ID.tfplan"
+PLAN="$TF_DIR/vm-$VM_ID.tfplan"
 source "$REPO_ROOT/deployment/scripts/terraform_vm_workspace.sh"
 
 PROXMOX_HOST="${PROXMOX_HOST:-195.154.103.231}"
@@ -33,10 +38,6 @@ for program in terraform ssh ansible ansible-playbook python3; do
 done
 [[ -r "$SSL_CERT_FILE" ]] || {
     echo "ERROR: Proxmox CA certificate not readable: $SSL_CERT_FILE" >&2
-    exit 1
-}
-[[ -f "$TF_DIR/terraform.tfvars" ]] || {
-    echo "ERROR: Copy deployment/terraform/terraform.tfvars.example to terraform.tfvars first." >&2
     exit 1
 }
 [[ -f "$ANSIBLE_DIR/install-k3s.yml" ]] || {
@@ -63,14 +64,6 @@ if [[ "$RUN_APPLICATION" == true ]]; then
     }
 fi
 
-# Shared settings (Proxmox node, storage, subnet, gateway) stay in terraform.tfvars.
-# The generated Git-ignored per-VM file overrides ID, name, IP and create_vm.
-CONFIG_PREEXISTED=false
-[[ -e "$TFVARS" ]] && CONFIG_PREEXISTED=true
-VM_CIDR="$(python3 "$REPO_ROOT/deployment/scripts/vm_instance_config.py" \
-    prepare "$TF_DIR" "$VM_ID" "$LAST_OCTET")" || exit 1
-echo "Target VM $VM_ID: $VM_CIDR, Terraform workspace vm-$VM_ID"
-
 if [[ -z "${PROXMOX_VE_API_TOKEN:-}" ]]; then
     read -rsp "Enter full Proxmox API token (ID=secret): " PROXMOX_VE_API_TOKEN
     echo
@@ -82,15 +75,40 @@ fi
 export PROXMOX_VE_API_TOKEN
 
 terraform_vm_workspace create
-# Never attach a newly generated config to an already populated workspace.
-if [[ "$WORKSPACE_ALREADY_EXISTED" == true && "$CONFIG_PREEXISTED" == false ]]; then
-    if [[ -n "$(terraform -chdir="$TF_DIR" state list)" ]]; then
-        echo "ERROR: Existing workspace $VM_WORKSPACE has state but no instance config." >&2
+# Read the network from Terraform's own defaults (or an optional override);
+# no manually created terraform.tfvars or generated instance files are needed.
+TEMPLATE_CIDR="$(terraform -chdir="$TF_DIR" console <<< 'var.vm_ipv4_cidr')"
+GATEWAY="$(terraform -chdir="$TF_DIR" console <<< 'var.vm_gateway')"
+TEMPLATE_CIDR="${TEMPLATE_CIDR#\"}"
+TEMPLATE_CIDR="${TEMPLATE_CIDR%\"}"
+GATEWAY="${GATEWAY#\"}"
+GATEWAY="${GATEWAY%\"}"
+if [[ ! "$TEMPLATE_CIDR" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/24$ ||
+      ! "$GATEWAY" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo "ERROR: Default Terraform network must be IPv4 with /24 mask." >&2
+    exit 1
+fi
+VM_PREFIX="${TEMPLATE_CIDR%.*}"
+VM_CIDR="$VM_PREFIX.$LAST_OCTET/24"
+if [[ "$GATEWAY" == "${VM_CIDR%/*}" ]]; then
+    echo "ERROR: Requested VM IP is the network gateway." >&2
+    exit 1
+fi
+echo "Target VM $VM_ID: $VM_CIDR, Terraform workspace $VM_WORKSPACE"
+# A rerun must not silently reassign a workspace's existing VM or IP.
+if terraform -chdir="$TF_DIR" state list | grep -Fxq 'proxmox_virtual_environment_vm.k3s[0]'; then
+    STATE_VM_ID="$(terraform -chdir="$TF_DIR" output -raw managed_vm_id)"
+    STATE_VM_CIDR="$(terraform -chdir="$TF_DIR" output -raw managed_vm_ipv4)"
+    if [[ "$STATE_VM_ID" != "$VM_ID" || "$STATE_VM_CIDR" != "$VM_CIDR" ]]; then
+        echo "ERROR: $VM_WORKSPACE already manages VM $STATE_VM_ID ($STATE_VM_CIDR)." >&2
         exit 1
     fi
 fi
 terraform -chdir="$TF_DIR" validate
-terraform -chdir="$TF_DIR" plan -var-file="$TFVARS" -out="$PLAN" -input=false
+terraform -chdir="$TF_DIR" plan -input=false \
+    -var="create_vm=true" -var="vm_id=$VM_ID" \
+    -var="vm_name=job-market-ubuntu-$VM_ID" \
+    -var="vm_ipv4_cidr=$VM_CIDR" -out="$PLAN"
 
 # Reject destruction/replacement and verify BOTH VM ID and IP in the saved plan.
 if ! TARGET_VM_ID="$(terraform -chdir="$TF_DIR" show -json "$PLAN" |
@@ -124,7 +142,7 @@ fi
 terraform -chdir="$TF_DIR" apply "$PLAN"
 
 # Use Terraform outputs so the VM address, username and SSH key cannot drift
-# from terraform.tfvars. The private key is the sibling of the .pub key.
+# from the chosen workspace state. The private key is the sibling of the .pub key.
 VM_ID="$(terraform -chdir="$TF_DIR" output -raw managed_vm_id)"
 VM_CIDR="$(terraform -chdir="$TF_DIR" output -raw managed_vm_ipv4)"
 VM_IP="${VM_CIDR%%/*}"

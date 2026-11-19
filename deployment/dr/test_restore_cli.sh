@@ -4,13 +4,10 @@ set -euo pipefail
 base="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
 temp="$(mktemp -d)"
 trap 'rm -rf -- "$temp"' EXIT
-mkdir -p "$temp/deployment/scripts" "$temp/deployment/dr" "$temp/bin" "$temp/deployment/terraform/instances"
+mkdir -p "$temp/deployment/scripts" "$temp/deployment/dr" "$temp/bin" "$temp/deployment/terraform"
 cp "$base/deployment/scripts/restore_backup.sh" "$temp/deployment/scripts/restore_backup.sh"
 cp "$base/deployment/dr/common.sh" "$temp/deployment/dr/common.sh"
-cp "$base/deployment/scripts/vm_instance_config.py" "$temp/deployment/scripts/vm_instance_config.py"
 cp "$base/deployment/scripts/terraform_vm_workspace.sh" "$temp/deployment/scripts/terraform_vm_workspace.sh"
-printf 'vm_ipv4_cidr = "10.10.10.20/24"\nvm_gateway = "10.10.10.1"\n' > "$temp/deployment/terraform/terraform.tfvars"
-printf '{"create_vm":true,"vm_id":101,"vm_name":"job-market-ubuntu-101","vm_ipv4_cidr":"10.10.10.21/24"}\n' > "$temp/deployment/terraform/instances/vm-101.tfvars.json"
 printf '%s\n' 'not-a-private-key' > "$temp/id_ed25519"
 cat > "$temp/bin/terraform" <<'SH'
 #!/usr/bin/env bash
