@@ -6,7 +6,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 DEPLOY = Path(__file__).resolve().parent.parent / "scripts" / "deploy.sh"
 
 
@@ -69,9 +68,7 @@ exit 0
         self.mock("ansible-playbook", "#!/usr/bin/env bash\nexit 0\n")
         self.mock(
             "sleep",
-            "#!/usr/bin/env bash\n"
-            'echo "Unexpected SSH retry" >&2\n'
-            "exit 99\n",
+            "#!/usr/bin/env bash\n" 'echo "Unexpected SSH retry" >&2\n' "exit 99\n",
         )
 
     def mock(self, name, body):
