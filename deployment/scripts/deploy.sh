@@ -1,113 +1,105 @@
 #!/usr/bin/env bash
+# Provision a VM in its own Terraform workspace; then configure k3s via Ansible.
+# Usage: bash deployment/scripts/deploy.sh VM_ID LAST_IPV4_OCTET
 set -euo pipefail
 
-# Optional VM ID is an assertion, NEVER a switch to another Terraform state.
-# Use a separate Terraform working directory/state for each managed VM.
-if (( $# > 1 )) || { (( $# == 1 )) && [[ ! "$1" =~ ^[0-9]+$ ]]; }; then
-    echo "Usage: ./deployment/scripts/deploy.sh [EXPECTED_VM_ID]" >&2
+if (( $# != 2 )); then
+    echo "Usage: ./deployment/scripts/deploy.sh VM_ID LAST_IPV4_OCTET" >&2
     exit 2
 fi
-if (( $# == 1 )); then
-    if [[ -n "${EXPECTED_VM_ID:-}" && "$EXPECTED_VM_ID" != "$1" ]]; then
-        echo "ERROR: Command-line VM ID does not match EXPECTED_VM_ID." >&2
-        exit 1
-    fi
-    EXPECTED_VM_ID="$1"
-fi
-
-# Provision the Ubuntu VM with Terraform, then install/configure k3s with Ansible.
-# Proxmox bootstrap and the restricted SSH jump account must be prepared first
-# as documented in deployment/README.md. App deployment is a later step.
+VM_ID="$1"
+LAST_OCTET="$2"
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 TF_DIR="$REPO_ROOT/deployment/terraform"
 ANSIBLE_DIR="$REPO_ROOT/deployment/ansible"
+TFVARS="$TF_DIR/instances/vm-$VM_ID.tfvars.json"
+PLAN="$TF_DIR/instances/vm-$VM_ID.tfplan"
+source "$REPO_ROOT/deployment/scripts/terraform_vm_workspace.sh"
 
-# Example endpoint; override PROXMOX_HOST for other Proxmox installations.
 PROXMOX_HOST="${PROXMOX_HOST:-195.154.103.231}"
 JUMP_USER="${JUMP_USER:-jumpuser}"
-# Explicit target ID prevents accidentally applying a plan for a different VM.
-# Override EXPECTED_VM_ID only for a separately authorized VM.
-EXPECTED_VM_ID="${EXPECTED_VM_ID:-100}"
 export PROXMOX_VE_ENDPOINT="${PROXMOX_VE_ENDPOINT:-https://${PROXMOX_HOST}:8006/}"
 export SSL_CERT_FILE="${SSL_CERT_FILE:-$HOME/.config/proxmox/pve-root-ca.pem}"
 
-if [[ ! -r "$SSL_CERT_FILE" ]]; then
+# Fail before touching Proxmox when the local prerequisites are incomplete.
+for program in terraform ssh ansible ansible-playbook python3; do
+    command -v "$program" >/dev/null 2>&1 || {
+        echo "ERROR: Missing required program: $program" >&2
+        exit 1
+    }
+done
+[[ -r "$SSL_CERT_FILE" ]] || {
     echo "ERROR: Proxmox CA certificate not readable: $SSL_CERT_FILE" >&2
     exit 1
-fi
-if [[ ! -f "$TF_DIR/terraform.tfvars" ]]; then
-    echo "ERROR: Create $TF_DIR/terraform.tfvars from terraform.tfvars.example first." >&2
+}
+[[ -f "$TF_DIR/terraform.tfvars" ]] || {
+    echo "ERROR: Copy deployment/terraform/terraform.tfvars.example to terraform.tfvars first." >&2
     exit 1
-fi
-
-# Check Ansible prerequisites before provisioning; avoid leaving a newly created
-# VM when the controller is missing required local tools.
-for program in ssh ansible ansible-playbook python3; do
-    if ! command -v "$program" >/dev/null 2>&1; then
-        echo "ERROR: $program is required to install k3s. See deployment/README.md." >&2
-        exit 1
-    fi
-done
-if [[ ! -f "$ANSIBLE_DIR/install-k3s.yml" ]]; then
-    echo "ERROR: Missing $ANSIBLE_DIR/install-k3s.yml" >&2
+}
+[[ -f "$ANSIBLE_DIR/install-k3s.yml" ]] || {
+    echo "ERROR: Missing Ansible playbook: $ANSIBLE_DIR/install-k3s.yml" >&2
     exit 1
-fi
+}
 
-# Paste the complete token from the password manager: USER@REALM!TOKEN=SECRET.
-# An existing PROXMOX_VE_API_TOKEN is also accepted (e.g. in CI).
+# Shared settings (Proxmox node, storage, subnet, gateway) stay in terraform.tfvars.
+# The generated Git-ignored per-VM file overrides ID, name, IP and create_vm.
+CONFIG_PREEXISTED=false
+[[ -e "$TFVARS" ]] && CONFIG_PREEXISTED=true
+VM_CIDR="$(python3 "$REPO_ROOT/deployment/scripts/vm_instance_config.py" \
+    prepare "$TF_DIR" "$VM_ID" "$LAST_OCTET")" || exit 1
+echo "Target VM $VM_ID: $VM_CIDR, Terraform workspace vm-$VM_ID"
+
 if [[ -z "${PROXMOX_VE_API_TOKEN:-}" ]]; then
     read -rsp "Enter full Proxmox API token (ID=secret): " PROXMOX_VE_API_TOKEN
     echo
 fi
-if [[ -z "${PROXMOX_VE_API_TOKEN:-}" || "${PROXMOX_VE_API_TOKEN}" != *=* ]]; then
-    echo "ERROR: Expected full token in USER@REALM!TOKEN=SECRET format." >&2
+[[ -n "${PROXMOX_VE_API_TOKEN:-}" && "$PROXMOX_VE_API_TOKEN" == *=* ]] || {
+    echo "ERROR: Expected full Proxmox token in USER@REALM!TOKEN=SECRET format." >&2
     exit 1
-fi
+}
 export PROXMOX_VE_API_TOKEN
 
-# terraform.tfvars is the single source of truth for VM ID, IP, subnet,
-# node, storage, sizing and Cloud-Init username.
-terraform -chdir="$TF_DIR" init -input=false
-terraform -chdir="$TF_DIR" validate
-terraform -chdir="$TF_DIR" plan -out=vm.tfplan
-
-# Reject deletion/replacement actions (including unexpected Terraform state
-# changes). Also require a configured target VM.
-# Do not log the plan JSON, as it may include sensitive provider values.
-if ! [[ "$EXPECTED_VM_ID" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: EXPECTED_VM_ID must be a numeric Proxmox VM ID." >&2
-    exit 1
+terraform_vm_workspace create
+# Never attach a newly generated config to an already populated workspace.
+if [[ "$WORKSPACE_ALREADY_EXISTED" == true && "$CONFIG_PREEXISTED" == false ]]; then
+    if [[ -n "$(terraform -chdir="$TF_DIR" state list)" ]]; then
+        echo "ERROR: Existing workspace $VM_WORKSPACE has state but no instance config." >&2
+        exit 1
+    fi
 fi
-if ! TARGET_VM_ID="$(terraform -chdir="$TF_DIR" show -json vm.tfplan | EXPECTED_VM_ID="$EXPECTED_VM_ID" python3 -c '
+terraform -chdir="$TF_DIR" validate
+terraform -chdir="$TF_DIR" plan -var-file="$TFVARS" -out="$PLAN" -input=false
+
+# Reject destruction/replacement and verify BOTH VM ID and IP in the saved plan.
+if ! TARGET_VM_ID="$(terraform -chdir="$TF_DIR" show -json "$PLAN" |
+    EXPECTED_VM_ID="$VM_ID" EXPECTED_VM_CIDR="$VM_CIDR" python3 -c '
 import json, os, sys
 plan = json.load(sys.stdin)
 changes = plan.get("resource_changes", [])
 danger = [c["address"] for c in changes if "delete" in c.get("change", {}).get("actions", [])]
 if danger:
-    sys.exit("Refusing a plan containing deletion/replacement: " + ", ".join(danger))
+    sys.exit("Refusing deletion/replacement: " + ", ".join(danger))
 targets = [c for c in changes if c.get("address") == "proxmox_virtual_environment_vm.k3s[0]"]
 if len(targets) != 1:
-    sys.exit("Expected one managed VM. Check create_vm=true and terraform.tfvars.")
+    sys.exit("Expected exactly one managed VM. Check per-VM configuration.")
 vm_id = targets[0].get("change", {}).get("after", {}).get("vm_id")
-if not isinstance(vm_id, int) or vm_id < 100:
-    sys.exit("Unexpected VM ID in Terraform plan.")
-if vm_id != int(os.environ["EXPECTED_VM_ID"]):
-    sys.exit("Plan targets VM %s, but expected VM %s. Update the local, Git-ignored terraform.tfvars." % (vm_id, os.environ["EXPECTED_VM_ID"]))
+cidr = (plan.get("planned_values", {}).get("outputs", {})
+    .get("managed_vm_ipv4", {}).get("value"))
+if vm_id != int(os.environ["EXPECTED_VM_ID"]) or cidr != os.environ["EXPECTED_VM_CIDR"]:
+    sys.exit("Plan targets unexpected VM ID or guest IPv4 address")
 print(vm_id)
 ')"; then
-    echo "ERROR: Unsafe or incomplete Terraform plan; nothing was applied." >&2
-    echo "Inspect Terraform state and configuration before retrying." >&2
+    echo "ERROR: Unsafe Terraform plan; no changes were applied." >&2
     exit 1
 fi
 
-echo "Review the plan carefully. VM $TARGET_VM_ID must be unused before creating it."
-read -rp "Type 'apply $TARGET_VM_ID' to apply the saved plan, or anything else to cancel: " CONFIRM
+echo "Review the plan for VM $TARGET_VM_ID ($VM_CIDR) in workspace $VM_WORKSPACE."
+read -rp "Type 'apply $TARGET_VM_ID' to apply the saved plan: " CONFIRM
 if [[ "$CONFIRM" != "apply $TARGET_VM_ID" ]]; then
     echo "Deployment cancelled; no Terraform changes applied."
     exit 0
 fi
-
-terraform -chdir="$TF_DIR" apply vm.tfplan
+terraform -chdir="$TF_DIR" apply "$PLAN"
 
 # Use Terraform outputs so the VM address, username and SSH key cannot drift
 # from terraform.tfvars. The private key is the sibling of the .pub key.
@@ -196,5 +188,5 @@ ansible-playbook -i "$INVENTORY" --private-key "$SSH_PRIVATE_KEY" "$ANSIBLE_DIR/
 
 echo "Verifying k3s node and namespaces..."
 ssh "${SSH_OPTS[@]}" "$VM_USER@$VM_IP" "sudo -n k3s kubectl get nodes && sudo -n k3s kubectl get namespaces"
-echo "Deployment complete: VM $VM_ID is running k3s."
+echo "Deployment complete: VM $VM_ID ($VM_CIDR) is running k3s in $VM_WORKSPACE."
 

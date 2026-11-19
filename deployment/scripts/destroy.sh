@@ -1,94 +1,67 @@
 #!/usr/bin/env bash
+# Delete ONLY the VM tracked by the requested Terraform workspace.
+# Usage: bash deployment/scripts/destroy.sh VM_ID
 set -euo pipefail
 
-# Optional VM ID is an assertion, NEVER a switch to another Terraform state.
-# Use a separate Terraform working directory/state for each managed VM.
-if (( $# > 1 )) || { (( $# == 1 )) && [[ ! "$1" =~ ^[0-9]+$ ]]; }; then
-    echo "Usage: ./deployment/scripts/destroy.sh [EXPECTED_VM_ID]" >&2
+if (( $# != 1 )); then
+    echo "Usage: ./deployment/scripts/destroy.sh VM_ID" >&2
     exit 2
 fi
-if (( $# == 1 )); then
-    if [[ -n "${EXPECTED_VM_ID:-}" && "$EXPECTED_VM_ID" != "$1" ]]; then
-        echo "ERROR: Command-line VM ID does not match EXPECTED_VM_ID." >&2
-        exit 1
-    fi
-    EXPECTED_VM_ID="$1"
-fi
-
-# Destroy ONLY the Ubuntu VM managed by this Terraform state.
-# An existing Proxmox VM must never be deleted just because its ID was typed
-# into terraform.tfvars; the managed VM ID and configured VM ID must match.
+VM_ID="$1"
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 TF_DIR="$REPO_ROOT/deployment/terraform"
+TFVARS="$TF_DIR/instances/vm-$VM_ID.tfvars.json"
+PLAN="$TF_DIR/instances/vm-$VM_ID-destroy.tfplan"
 VM_RESOURCE='proxmox_virtual_environment_vm.k3s[0]'
+source "$REPO_ROOT/deployment/scripts/terraform_vm_workspace.sh"
+
+command -v terraform >/dev/null || { echo "ERROR: Terraform is required." >&2; exit 1; }
+VM_CIDR="$(python3 "$REPO_ROOT/deployment/scripts/vm_instance_config.py" \
+    verify "$TF_DIR" "$VM_ID")" || exit 1
 
 PROXMOX_HOST="${PROXMOX_HOST:-195.154.103.231}"
 export PROXMOX_VE_ENDPOINT="${PROXMOX_VE_ENDPOINT:-https://${PROXMOX_HOST}:8006/}"
 export SSL_CERT_FILE="${SSL_CERT_FILE:-$HOME/.config/proxmox/pve-root-ca.pem}"
-
-if [[ ! -r "$SSL_CERT_FILE" ]]; then
+[[ -r "$SSL_CERT_FILE" ]] || {
     echo "ERROR: Proxmox CA certificate not readable: $SSL_CERT_FILE" >&2
     exit 1
-fi
-if [[ ! -f "$TF_DIR/terraform.tfvars" ]]; then
-    echo "ERROR: Create $TF_DIR/terraform.tfvars from terraform.tfvars.example first." >&2
-    exit 1
-fi
-
-# Use the same (full) API token format as deployment/scripts/deploy.sh.
+}
 if [[ -z "${PROXMOX_VE_API_TOKEN:-}" ]]; then
     read -rsp "Enter full Proxmox API token (ID=secret): " PROXMOX_VE_API_TOKEN
     echo
 fi
-if [[ -z "${PROXMOX_VE_API_TOKEN:-}" || "${PROXMOX_VE_API_TOKEN}" != *=* ]]; then
-    echo "ERROR: Expected full token in USER@REALM!TOKEN=SECRET format." >&2
+[[ -n "${PROXMOX_VE_API_TOKEN:-}" && "$PROXMOX_VE_API_TOKEN" == *=* ]] || {
+    echo "ERROR: Expected full Proxmox token in USER@REALM!TOKEN=SECRET format." >&2
     exit 1
-fi
+}
 export PROXMOX_VE_API_TOKEN
 
-terraform -chdir="$TF_DIR" init -input=false
+# Never create a workspace during destruction; it must already exist.
+terraform_vm_workspace existing
 terraform -chdir="$TF_DIR" validate
-
-# Only delete a VM tracked by THIS local Terraform state, not an arbitrary
-# Proxmox VM with the same number. Reuse the state created by deployment/scripts/deploy.sh.
-if ! terraform -chdir="$TF_DIR" state list | grep -Fxq "$VM_RESOURCE"; then
-    echo "ERROR: $VM_RESOURCE is not in this Terraform state; nothing to destroy." >&2
+terraform -chdir="$TF_DIR" state list | grep -Fxq "$VM_RESOURCE" || {
+    echo "ERROR: Workspace $VM_WORKSPACE does not manage a VM; nothing to destroy." >&2
     exit 1
-fi
-
-# Terraform console can print variable warnings before the expression result.
-# Only accept a complete numeric line; fail closed if there is no VM ID.
-CONFIG_VM_ID="$(printf 'var.vm_id\n' | terraform -chdir="$TF_DIR" console -no-color | awk '/^[0-9]+$/ { id=$0 } END { print id }')"
+}
 MANAGED_VM_ID="$(terraform -chdir="$TF_DIR" output -raw managed_vm_id)"
-if [[ ! "$CONFIG_VM_ID" =~ ^[0-9]+$ || ! "$MANAGED_VM_ID" =~ ^[0-9]+$ ||
-      "$CONFIG_VM_ID" != "$MANAGED_VM_ID" ]]; then
-    echo "ERROR: VM ID mismatch/unsafe value: terraform.tfvars=$CONFIG_VM_ID, state=$MANAGED_VM_ID." >&2
-    echo "Refusing to destroy a different VM. Check terraform.tfvars and the state." >&2
+MANAGED_VM_IP="$(terraform -chdir="$TF_DIR" output -raw managed_vm_ipv4)"
+[[ "$MANAGED_VM_ID" == "$VM_ID" && "$MANAGED_VM_IP" == "$VM_CIDR" ]] || {
+    echo "ERROR: Workspace state does not match VM $VM_ID at $VM_CIDR." >&2
     exit 1
-fi
-
-if [[ -n "${EXPECTED_VM_ID:-}" && "$MANAGED_VM_ID" != "$EXPECTED_VM_ID" ]]; then
-    echo "ERROR: Expected VM $EXPECTED_VM_ID but this Terraform state manages VM $MANAGED_VM_ID." >&2
-    exit 1
-fi
-
-# Extra explicit opt-in for the configured VM 100. Only resources tracked
-# by this Terraform state can be destroyed.
-if [[ "$MANAGED_VM_ID" == "100" && "${ALLOW_DESTROY_VM100:-false}" != "true" ]]; then
+}
+if [[ "$VM_ID" == 100 && "${ALLOW_DESTROY_VM100:-false}" != true ]]; then
     echo "ERROR: Refusing to destroy VM 100 without ALLOW_DESTROY_VM100=true." >&2
-    echo "Back up persistent data and review the Terraform state before deletion." >&2
     exit 1
 fi
 
-echo "Planning destruction of managed VM $MANAGED_VM_ID only."
-terraform -chdir="$TF_DIR" plan -destroy -target="$VM_RESOURCE" -out=destroy.tfplan -input=false
-
-echo "WARNING: This permanently deletes VM $MANAGED_VM_ID and its managed disks."
-echo "Review the plan. The manually downloaded Cloud Image and Proxmox ACLs are not managed by this script."
-read -rp "Type 'destroy $MANAGED_VM_ID' to continue: " CONFIRM
-if [[ "$CONFIRM" != "destroy $MANAGED_VM_ID" ]]; then
+terraform -chdir="$TF_DIR" plan -destroy -target="$VM_RESOURCE" \
+    -var-file="$TFVARS" -out="$PLAN" -input=false
+echo "WARNING: This deletes VM $VM_ID ($VM_CIDR) and its managed disks."
+echo "Terraform workspace: $VM_WORKSPACE. Unrelated VM workspaces are not touched."
+read -rp "Type 'destroy $VM_ID' to continue: " CONFIRM
+if [[ "$CONFIRM" != "destroy $VM_ID" ]]; then
     echo "Destruction cancelled."
     exit 0
 fi
-
-terraform -chdir="$TF_DIR" apply destroy.tfplan
+terraform -chdir="$TF_DIR" apply "$PLAN"
+echo "Destroyed VM $VM_ID. Workspace and its variables are retained for safe redeployment."
