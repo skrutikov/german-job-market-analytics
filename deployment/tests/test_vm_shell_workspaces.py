@@ -6,7 +6,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 DR_TEST = Path(__file__).resolve().parent.parent / "dr" / "test_restore_cli.sh"
 
@@ -31,7 +30,7 @@ class VmWorkspaceShellTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             terraform = Path(directory) / "terraform"
             terraform.write_text(
-                '#!/usr/bin/env bash\n'
+                "#!/usr/bin/env bash\n"
                 'case "$*" in\n'
                 '  *"init -input=false"*) : ;;\n'
                 '  *"workspace list"*)\n'
@@ -44,7 +43,7 @@ class VmWorkspaceShellTests(unittest.TestCase):
                 '  *"workspace select vm-103"*) : ;;\n'
                 '  *"workspace show"*) echo "${TF_WORKSPACE:-default}" ;;\n'
                 '  *) echo "Unexpected Terraform call: $*" >&2; exit 1 ;;\n'
-                'esac\n'
+                "esac\n"
             )
             terraform.chmod(0o755)
             env = os.environ.copy()
@@ -61,7 +60,7 @@ class VmWorkspaceShellTests(unittest.TestCase):
             command = (
                 f'VM_ID=103; TF_DIR="{directory}"; '
                 f'source "{source}"; '
-                f'terraform_vm_workspace {mode}; '
+                f"terraform_vm_workspace {mode}; "
                 'echo "Selected: $TF_WORKSPACE"'
             )
             return subprocess.run(
