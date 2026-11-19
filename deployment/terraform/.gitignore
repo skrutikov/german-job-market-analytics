@@ -14,3 +14,7 @@ override.tf.json
 *.tfvars
 *.tfvars.json
 .env
+
+# Independently generated instance settings and local workspace states.
+instances/
+terraform.tfstate.d/
