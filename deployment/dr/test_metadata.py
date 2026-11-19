@@ -2,7 +2,7 @@
 
 import unittest
 
-from deployment.dr.record_metadata import render_metadata
+from dr.record_metadata import render_metadata
 
 RELEASE = "2b8f7d295af0340b0b920b6d2f7fb5fee5b836c8"
 GIT_SHA = "70f42244d344de760f4d5200f1a51465b894e2a2"
