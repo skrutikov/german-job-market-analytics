@@ -1,15 +1,32 @@
 #!/usr/bin/env bash
 # Provision a VM in its own Terraform workspace; then configure k3s via Ansible.
-# Usage: bash deployment/scripts/deploy.sh VM_ID LAST_IPV4_OCTET [--infra-only]
+# Usage: bash deployment/scripts/deploy.sh VM_ID LAST_IPV4_OCTET [dev|prod] [--infra-only]
 set -euo pipefail
 
-if ! (( $# == 2 || $# == 3 )) ||
-    { (( $# == 3 )) && [[ "$3" != --infra-only ]]; }; then
-    echo "Usage: ./deployment/scripts/deploy.sh VM_ID LAST_IPV4_OCTET [--infra-only]" >&2
+usage() {
+    echo "Usage: ./deployment/scripts/deploy.sh VM_ID LAST_IPV4_OCTET [dev|prod] [--infra-only]" >&2
     exit 2
-fi
+}
+(( $# >= 2 && $# <= 4 )) || usage
 RUN_APPLICATION=true
-[[ "${3:-}" == --infra-only ]] && RUN_APPLICATION=false
+DEPLOY_ENV=dev
+seen_environment=false
+seen_infra_only=false
+for argument in "${@:3}"; do
+    case "$argument" in
+        dev|prod)
+            [[ "$seen_environment" == false ]] || usage
+            DEPLOY_ENV="$argument"
+            seen_environment=true
+            ;;
+        --infra-only)
+            [[ "$seen_infra_only" == false ]] || usage
+            RUN_APPLICATION=false
+            seen_infra_only=true
+            ;;
+        *) usage ;;
+    esac
+done
 VM_ID="$1"
 LAST_OCTET="$2"
 # Validate arguments before reading credentials or touching infrastructure.
@@ -62,6 +79,32 @@ if [[ "$RUN_APPLICATION" == true ]]; then
         echo "ERROR: Missing application bootstrap script." >&2
         exit 1
     }
+    if [[ "$DEPLOY_ENV" == dev && "$APP_REF" == production ]]; then
+        echo "ERROR: Dev may not track the approved production branch." >&2
+        exit 1
+    fi
+    if [[ "$DEPLOY_ENV" == prod ]]; then
+        # The production revision is advanced exclusively by an approved
+        # promotion workflow. Check it before provisioning a new VM.
+        echo "Checking approved production GitOps revision..."
+        git -C "$REPO_ROOT" fetch --no-tags origin production:refs/remotes/origin/production || {
+            echo "ERROR: No approved production branch is available." >&2
+            exit 1
+        }
+        for approved_file in \
+            deployment/kubernetes/deploy.sh \
+            deployment/kubernetes/overlays/prod/kustomization.yaml \
+            deployment/argocd/application-prod.yaml \
+            deployment/argocd/configure-sync.sh; do
+            if ! git -C "$REPO_ROOT" cat-file -e \
+                "refs/remotes/origin/production:$approved_file"; then
+                echo "ERROR: Approved production branch lacks $approved_file." >&2
+                echo "Merge the deployment refactor into main, then promote a tested release." >&2
+                echo "No VM has been provisioned." >&2
+                exit 1
+            fi
+        done
+    fi
 fi
 
 if [[ -z "${PROXMOX_VE_API_TOKEN:-}" ]]; then
@@ -230,11 +273,11 @@ echo "Verifying k3s node and namespaces..."
 ssh "${SSH_OPTS[@]}" "$VM_USER@$VM_IP" "sudo -n k3s kubectl get nodes && sudo -n k3s kubectl get namespaces"
 echo "VM $VM_ID ($VM_CIDR) is running k3s in $VM_WORKSPACE."
 if [[ "$RUN_APPLICATION" == true ]]; then
-    echo "Bootstrapping application and Argo CD from Git branch '$APP_REF'..."
+    echo "Bootstrapping $DEPLOY_ENV environment (installer branch: '$APP_REF')..."
     ssh "${SSH_OPTS[@]}" "$VM_USER@$VM_IP" \
-        "JOB_MARKET_REF='$APP_REF' bash -s" \
+        "JOB_MARKET_REF='$APP_REF' bash -s -- '$DEPLOY_ENV'" \
         < "$REPO_ROOT/deployment/scripts/setup_vm.sh"
-    echo "VM $VM_ID: Kubernetes application and Argo CD bootstrap complete."
+    echo "VM $VM_ID: $DEPLOY_ENV application and Argo CD bootstrap complete."
 else
     echo "Application bootstrap skipped (--infra-only)."
 fi

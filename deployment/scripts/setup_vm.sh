@@ -3,6 +3,12 @@
 # Run as the Ubuntu user, not on the Proxmox host or local workstation.
 set -euo pipefail
 
+environment="${1:-dev}"
+if (( $# > 1 )) || [[ "$environment" != dev && "$environment" != prod ]]; then
+    echo "Usage: bash deployment/scripts/setup_vm.sh [dev|prod]" >&2
+    exit 2
+fi
+
 if (( EUID == 0 )); then
     echo "Run as the Ubuntu VM user (without sudo). This script invokes sudo where needed." >&2
     exit 1
@@ -62,16 +68,24 @@ sudo sysctl -w vm.max_map_count=262144
 printf 'vm.max_map_count=262144\n' |
     sudo tee /etc/sysctl.d/99-elasticsearch.conf >/dev/null
 
-echo "Deploying the dev Kubernetes application..."
-sudo bash "$repo_dir/deployment/kubernetes/deploy.sh" dev
+if [[ "$environment" == dev ]]; then
+    echo "Deploying the development Kubernetes application..."
+    sudo bash "$repo_dir/deployment/kubernetes/deploy.sh" dev
+    echo "Installing and configuring development Argo CD..."
+    sudo bash "$repo_dir/deployment/argocd/bootstrap.sh" "$repo_ref"
+else
+    # Argo CD installation is shared, but a prod-only VM does not require a
+    # development namespace or Application to be deployed.
+    echo "Installing Argo CD without registering a dev Application..."
+    sudo bash "$repo_dir/deployment/argocd/bootstrap.sh" --install-only
+    echo "Deploying exclusively from the approved production Git branch..."
+    bash "$repo_dir/deployment/argocd/bootstrap-prod.sh"
+fi
 
-echo "Installing and configuring Argo CD..."
-sudo bash "$repo_dir/deployment/argocd/bootstrap.sh" "$repo_ref"
-
-echo "Checking the final cluster state..."
+echo "Checking the $environment cluster state..."
 sudo k3s kubectl get nodes
-sudo k3s kubectl -n dev get pods
-sudo k3s kubectl -n argocd get application job-market-dev
+sudo k3s kubectl -n "$environment" get pods
+sudo k3s kubectl -n argocd get application "job-market-$environment"
 
-echo "VM application setup complete."
+echo "VM $environment application setup complete."
 echo "To start the first ETL run, execute: bash $repo_dir/deployment/scripts/init_airflow.sh"

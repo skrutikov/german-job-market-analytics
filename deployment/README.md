@@ -25,8 +25,9 @@ The `deployment/dr/` directory contains lower-level disaster-recovery helpers, i
 From the repository root on the operator workstation:
 
 ```bash
-./deployment/scripts/deploy.sh 103 27
-./deployment/scripts/deploy.sh 104 28 --infra-only
+./deployment/scripts/deploy.sh 103 27 dev
+./deployment/scripts/deploy.sh 104 28 prod
+./deployment/scripts/deploy.sh 105 29 --infra-only
 ./deployment/scripts/destroy.sh 103
 ```
 
@@ -68,9 +69,14 @@ The scripts still ask for confirmation.
 automatically migrated.** Do not recreate an already existing Proxmox VM ID
 in a new workspace.
 
-After Terraform, `deploy.sh` waits for SSH/Cloud-Init, configures k3s with
-Ansible, then bootstraps the dev application and Argo CD. Argo CD dev tracks
-the branch selected for bootstrap (for example `maximize-automation`).
+After Terraform, `deploy.sh` waits for SSH/Cloud-Init and configures k3s
+with Ansible. Choose `dev` (the default) to deploy the dev application
+and register its Argo CD Application against the selected feature branch.
+Choose `prod` to install Argo CD **without dev**, deploy only the approved
+`production` Git revision, and register the production Application. The
+production path refuses to provision a VM while the approved production
+branch lacks the new `deployment/` manifest layout. Merge into `main`
+and promote a tested release first, using the existing approval workflow.
 Use `--infra-only` to stop after k3s. The initial Airflow ETL trigger
 remains a separate command.
 
@@ -404,7 +410,9 @@ manually created `terraform.tfvars` is needed. Override shared defaults
 through `TF_VAR_...` environment variables when necessary.
 
 ```bash
-./deployment/scripts/deploy.sh 103 27
+./deployment/scripts/deploy.sh 103 27 dev
+# or, once a compatible approved production revision exists:
+./deployment/scripts/deploy.sh 104 28 prod
 ```
 
 The script creates or selects workspace `vm-103`, uses the configured

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-time or repeatable production bootstrap; run as the Ubuntu VM user.
-# Never replaces the VM or switches the working checkout away from main.
+# Never replaces the VM or switches the working checkout away from its branch.
 set -euo pipefail
 
 if (( EUID == 0 )); then
@@ -31,11 +31,11 @@ esac
 git -C "$repo_root" fetch --no-tags origin \
     production:refs/remotes/origin/production
 sudo k3s kubectl -n argocd get deployment argocd-server >/dev/null || {
-    echo "Bootstrap dev Argo CD first: sudo bash deployment/argocd/bootstrap.sh main" >&2
+    echo "Install Argo CD first: sudo bash deployment/argocd/bootstrap.sh --install-only" >&2
     exit 1
 }
 sudo k3s kubectl get namespace prod >/dev/null || {
-    echo "Missing prod namespace. Run local ./deploy.sh (Ansible) first." >&2
+    echo "Missing prod namespace. Run deployment/scripts/deploy.sh with prod (Ansible creates namespaces)." >&2
     exit 1
 }
 
