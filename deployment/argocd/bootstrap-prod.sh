@@ -49,9 +49,9 @@ test -f "$temporary/deployment/argocd/application-prod.yaml" || {
     exit 1
 }
 echo "Deploying approved production branch without touching dev..."
-sudo bash "$temporary/deployment/deployment/kubernetes/deploy.sh" prod
+sudo bash "$temporary/deployment/kubernetes/deploy.sh" prod
 echo "Registering production GitOps (PVCs protected before auto-pruning)..."
-sudo bash "$temporary/deployment/deployment/argocd/configure-sync.sh" production prod
+sudo bash "$temporary/deployment/argocd/configure-sync.sh" production prod
 sudo k3s kubectl -n argocd get application job-market-prod
 sudo k3s kubectl -n prod get pods
 echo "Prod tracks the approved production Git branch; later promotions sync automatically."

@@ -37,5 +37,5 @@ k3s kubectl -n argocd rollout status deployment/argocd-repo-server --timeout=600
 k3s kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=600s
 
 # Apply the safe PVC policy before enabling pruning for the Application.
-bash "$repo_root/deployment/deployment/argocd/configure-sync.sh" "$revision"
+bash "$repo_root/deployment/argocd/configure-sync.sh" "$revision"
 echo "Use ./kubernetes_start.sh dev on the local machine to access Argo CD."
