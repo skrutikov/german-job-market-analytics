@@ -67,7 +67,7 @@ def validate() -> None:
     assert image_scans[0]["with"].get("trivyignores") is None
     assert image_scans[1]["with"]["trivyignores"] == (
         "${{ matrix.component == 'airflow' && "
-        "'security/trivy-airflow-exceptions.yaml' || '' }}"
+        "'deployment/security/trivy-airflow-exceptions.yaml' || '' }}"
     )
     patched_version_step = next(
         step
@@ -79,7 +79,7 @@ def validate() -> None:
     assert "dpkg --compare-versions" in patched_version_step["run"]
 
     exceptions = yaml.safe_load(
-        Path("security/trivy-airflow-exceptions.yaml").read_text()
+        Path("deployment/security/trivy-airflow-exceptions.yaml").read_text()
     )
     assert exceptions["vulnerabilities"] == [
         {

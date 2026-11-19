@@ -9,7 +9,7 @@ spec:
     repoURL: https://github.com/skrutikov/german-job-market-analytics.git
     # ONLY the approved promotion workflow advances this branch.
     targetRevision: production
-    path: kubernetes/overlays/prod
+    path: deployment/kubernetes/overlays/prod
   destination:
     server: https://kubernetes.default.svc
     namespace: prod

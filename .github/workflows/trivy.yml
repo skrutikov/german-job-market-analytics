@@ -30,7 +30,7 @@ jobs:
           persist-credentials: false
 
       - name: Scan repository (SARIF report)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquadeployment/security/trivy-action@v0.36.0
         with:
           version: v0.76.2
           scan-type: fs
@@ -59,7 +59,7 @@ jobs:
 
       # Keep the report even when the policy step blocks this change.
       - name: Fail on fixable critical risks or detected critical secrets
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquadeployment/security/trivy-action@v0.36.0
         with:
           version: v0.76.2
           scan-type: fs
@@ -118,7 +118,7 @@ jobs:
             -c "from airflow.sdk import dag, task; import job_market; print('Airflow imports OK')"
 
       - name: Scan container (SARIF report)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquadeployment/security/trivy-action@v0.36.0
         with:
           version: v0.76.2
           scan-type: image
@@ -147,7 +147,7 @@ jobs:
           retention-days: 14
 
       - name: Block fixable critical container vulnerabilities
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquadeployment/security/trivy-action@v0.36.0
         with:
           version: v0.76.2
           scan-type: image
@@ -159,5 +159,5 @@ jobs:
           # Only the Airflow gate has a documented, expiring exception for
           # CVE-2026-99306, *after* dpkg confirms the patched package version.
           # The SARIF report stays unfiltered so findings remain visible.
-          trivyignores: ${{ matrix.component == 'airflow' && 'security/trivy-airflow-exceptions.yaml' || '' }}
+          trivyignores: ${{ matrix.component == 'airflow' && 'deployment/security/trivy-airflow-exceptions.yaml' || '' }}
           exit-code: "1"

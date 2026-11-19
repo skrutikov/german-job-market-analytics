@@ -94,7 +94,7 @@ class AirflowScriptTests(unittest.TestCase):
 
     def test_skips_trigger_when_dag_is_running(self):
         self.environment["MOCK_ACTIVE"] = "running"
-        result = self.run_script("init_airflow.sh")
+        result = self.run_script("scripts/init_airflow.sh")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Skipping manual ETL", result.stdout)
         self.assertNotIn("dags trigger", self.logged_calls())
@@ -124,7 +124,7 @@ class AirflowScriptTests(unittest.TestCase):
         self.assertNotIn("dags trigger", self.logged_calls())
 
     def test_status_script_is_read_only(self):
-        result = self.run_script("check_airflow_state.sh")
+        result = self.run_script("scripts/check_airflow_state.sh")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("namespace prod", result.stdout)
         self.assertIn("dags list-runs", self.logged_calls())
