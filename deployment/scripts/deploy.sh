@@ -107,6 +107,68 @@ if [[ "$RUN_APPLICATION" == true ]]; then
     fi
 fi
 
+
+# A per-VM ACL is required by the restricted bootcamp Proxmox token. Unlike
+# shared VNet/storage ACLs, Proxmox may remove this ACL with a deleted VM.
+print_vm_acl_reminder() {
+    cat <<EOF
+==================================================
+PROXMOX VM PERMISSIONS (before VM creation)
+==================================================
+For a new or recreated VM, log in to the Proxmox HOST as root
+and grant access only to VM $VM_ID:
+
+pveum acl modify /vms/$VM_ID \
+  --roles PVEVMAdmin \
+  --users root1@pve \
+  --tokens 'root1@pve!terraform'
+
+Do this before Terraform apply; otherwise the API may return HTTP 403.
+If you use a different Proxmox token, adjust the user/token names.
+Do not grant cluster-wide VM permissions.
+==================================================
+
+EOF
+}
+
+print_ssh_host_key_recovery() {
+    cat >&2 <<EOF
+
+==================================================
+SSH HOST KEY CHANGED — STOP AND VERIFY
+==================================================
+VM $VM_ID may have been recreated at $VM_IP.
+If the warning refers to the Proxmox jump host instead,
+verify THAT host's identity; do not blindly delete any key.
+
+1. In Proxmox, open VM $VM_ID -> Console and independently
+   verify the guest's ED25519 SSH fingerprint:
+
+   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+
+2. ONLY after verifying the new guest key, run on the
+   workstation (the same user running deploy.sh):
+
+   ssh-keygen -R $VM_IP
+
+3. Reconnect and compare the fingerprint before accepting:
+
+   ssh -J "$JUMP_USER@$PROXMOX_HOST" "$VM_USER@$VM_IP"
+
+4. Then rerun deployment using the same workspace:
+
+   ./deployment/scripts/deploy.sh $VM_ID $LAST_OCTET $DEPLOY_ENV
+
+Never disable host-key checking or remove keys without
+verification. If console login is unavailable, consult
+deployment/README.md for the Proxmox-host cross-check.
+The VM is already Terraform-managed; do not recreate it.
+==================================================
+EOF
+}
+
+# Show the ACL instructions before any Terraform operation that may create a VM.
+print_vm_acl_reminder
 if [[ -z "${PROXMOX_VE_API_TOKEN:-}" ]]; then
     read -rsp "Enter full Proxmox API token (ID=secret): " PROXMOX_VE_API_TOKEN
     echo
@@ -219,11 +281,21 @@ SSH_OPTS=(
     -o KbdInteractiveAuthentication=no
     -J "$JUMP_USER@$PROXMOX_HOST"
 )
+# Preserve SSH diagnostics and stop immediately on a changed host key:
+# retrying cannot fix a trust failure, and must not bypass host verification.
+SSH_ERROR_LOG="$(mktemp)"
+trap 'rm -f -- "$SSH_ERROR_LOG" "${INVENTORY:-}"' EXIT
 SSH_READY=false
 for attempt in {1..18}; do
-    if ssh "${SSH_OPTS[@]}" "$VM_USER@$VM_IP" true; then
+    if ssh "${SSH_OPTS[@]}" "$VM_USER@$VM_IP" true 2>"$SSH_ERROR_LOG"; then
         SSH_READY=true
         break
+    fi
+    cat "$SSH_ERROR_LOG" >&2
+    if grep -Fq 'REMOTE HOST IDENTIFICATION HAS CHANGED' "$SSH_ERROR_LOG" ||
+       grep -Fq 'POSSIBLE DNS SPOOFING DETECTED' "$SSH_ERROR_LOG"; then
+        print_ssh_host_key_recovery
+        exit 1
     fi
     echo "SSH not ready (attempt $attempt/18). Retrying..."
     sleep 5
@@ -256,7 +328,7 @@ fi
 
 # Temporary inventory: no duplicate VM IP/user settings or committed credentials.
 INVENTORY="$(mktemp)"
-trap 'rm -f "$INVENTORY"' EXIT
+# The EXIT trap already cleans up both the inventory and the SSH error log.
 cat > "$INVENTORY" <<EOF
 [k3s_servers]
 k3s-vm ansible_host=$VM_IP ansible_user=$VM_USER ansible_python_interpreter=/usr/bin/python3 ansible_ssh_common_args='-o ProxyJump=$JUMP_USER@$PROXMOX_HOST'
@@ -281,6 +353,17 @@ if [[ "$RUN_APPLICATION" == true ]]; then
 else
     echo "Application bootstrap skipped (--infra-only)."
 fi
-echo "Deployment complete: VM $VM_ID in workspace $VM_WORKSPACE."
+cat <<EOF
+
+==================================================
+DEPLOYMENT COMPLETE
+==================================================
+VM ID:       $VM_ID
+IP address:  $VM_IP
+Environment: $DEPLOY_ENV
+Workspace:   $VM_WORKSPACE
+Application: $([[ "$RUN_APPLICATION" == true ]] && echo installed || echo "skipped (--infra-only)")
+==================================================
+EOF
 
 
