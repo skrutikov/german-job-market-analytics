@@ -53,9 +53,19 @@ workspace for an already-existing VM ID. Your Proxmox host still needs the
 Cloud Image, VNet, VM-specific API permissions and jump account configured,
 and the script still requests explicit approval for changes.
 
-After provisioning, `deploy.sh` waits for Cloud-Init, then invokes Ansible
-to install and verify k3s. The application bootstrap remains a separate
-step using `deployment/scripts/setup_vm.sh`.
+After provisioning, `deploy.sh` waits for Cloud-Init and invokes Ansible
+to install and verify k3s. It then runs `setup_vm.sh` on the guest to deploy
+the dev application and bootstrap Argo CD, using the workstation's current Git
+branch (or `JOB_MARKET_REF` if explicitly set). Argo CD's dev Application
+continues to track `main`, as configured in the GitOps manifests. To
+provision only the VM and k3s, add `--infra-only`:
+
+```bash
+bash deployment/scripts/deploy.sh 103 25 --infra-only
+```
+
+The initial ETL trigger remains a deliberate, separate operation using
+`deployment/scripts/init_airflow.sh` inside the VM.
 
 ## Deployment overview
 

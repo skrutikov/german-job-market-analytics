@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Provision a VM in its own Terraform workspace; then configure k3s via Ansible.
-# Usage: bash deployment/scripts/deploy.sh VM_ID LAST_IPV4_OCTET
+# Usage: bash deployment/scripts/deploy.sh VM_ID LAST_IPV4_OCTET [--infra-only]
 set -euo pipefail
 
-if (( $# != 2 )); then
-    echo "Usage: ./deployment/scripts/deploy.sh VM_ID LAST_IPV4_OCTET" >&2
+if ! (( $# == 2 || $# == 3 )) ||
+    { (( $# == 3 )) && [[ "$3" != --infra-only ]]; }; then
+    echo "Usage: ./deployment/scripts/deploy.sh VM_ID LAST_IPV4_OCTET [--infra-only]" >&2
     exit 2
 fi
+RUN_APPLICATION=true
+[[ "${3:-}" == --infra-only ]] && RUN_APPLICATION=false
 VM_ID="$1"
 LAST_OCTET="$2"
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -40,6 +43,25 @@ done
     echo "ERROR: Missing Ansible playbook: $ANSIBLE_DIR/install-k3s.yml" >&2
     exit 1
 }
+
+# Bootstrap the same branch that invoked the provisioning command, not an
+# unrelated default branch. Validate before provisioning anything remotely.
+if [[ "$RUN_APPLICATION" == true ]]; then
+    command -v git >/dev/null || {
+        echo "ERROR: git is required to bootstrap the application." >&2
+        exit 1
+    }
+    APP_REF="${JOB_MARKET_REF:-$(git -C "$REPO_ROOT" branch --show-current)}"
+    if [[ ! "$APP_REF" =~ ^[a-zA-Z0-9][a-zA-Z0-9._/-]*$ ||
+          "$APP_REF" == *..* ]]; then
+        echo "ERROR: Set JOB_MARKET_REF to a safe existing Git branch name." >&2
+        exit 1
+    fi
+    [[ -f "$REPO_ROOT/deployment/scripts/setup_vm.sh" ]] || {
+        echo "ERROR: Missing application bootstrap script." >&2
+        exit 1
+    }
+fi
 
 # Shared settings (Proxmox node, storage, subnet, gateway) stay in terraform.tfvars.
 # The generated Git-ignored per-VM file overrides ID, name, IP and create_vm.
@@ -188,5 +210,16 @@ ansible-playbook -i "$INVENTORY" --private-key "$SSH_PRIVATE_KEY" "$ANSIBLE_DIR/
 
 echo "Verifying k3s node and namespaces..."
 ssh "${SSH_OPTS[@]}" "$VM_USER@$VM_IP" "sudo -n k3s kubectl get nodes && sudo -n k3s kubectl get namespaces"
-echo "Deployment complete: VM $VM_ID ($VM_CIDR) is running k3s in $VM_WORKSPACE."
+echo "VM $VM_ID ($VM_CIDR) is running k3s in $VM_WORKSPACE."
+if [[ "$RUN_APPLICATION" == true ]]; then
+    echo "Bootstrapping application and Argo CD from Git branch '$APP_REF'..."
+    ssh "${SSH_OPTS[@]}" "$VM_USER@$VM_IP" \
+        "JOB_MARKET_REF='$APP_REF' bash -s" \
+        < "$REPO_ROOT/deployment/scripts/setup_vm.sh"
+    echo "VM $VM_ID: Kubernetes application and Argo CD bootstrap complete."
+else
+    echo "Application bootstrap skipped (--infra-only)."
+fi
+echo "Deployment complete: VM $VM_ID in workspace $VM_WORKSPACE."
+
 

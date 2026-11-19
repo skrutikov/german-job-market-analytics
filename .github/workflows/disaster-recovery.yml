@@ -56,8 +56,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m pip install PyYAML==6.0.2
-          mkdir -p /tmp/job-market-dr-render
-          cp -R kubernetes /tmp/job-market-dr-render/
+          mkdir -p /tmp/job-market-dr-render/deployment
+          cp -R deployment/kubernetes /tmp/job-market-dr-render/deployment/
           overlay=/tmp/job-market-dr-render/deployment/kubernetes/overlays/prod/kustomization.yaml
           tag="$(awk '/newTag: sha-/ { print $2; exit }' "$overlay")"
           bash deployment/dr/sanitize_overlay.sh "$overlay" "$tag"
