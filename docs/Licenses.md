@@ -29,6 +29,8 @@
 - https://www.svgrepo.com/svg/525577/user-circle
 
 
-- https://user-images.githubusercontent.com/25306803/43103633-a5d61dc4-8e83-11e8-9f0e-7ccdbee01eb6.png
+- https://github.com/argoproj/argo-cd/blob/master/ui/src/assets/images/argo.png
 - https://uxwing.com/notification-alarm-buzzer-icon/
 - https://www.svgrepo.com/vectors/pull-request/
+
+Kubernetes PVC icon — Kubernetes Community Icons, licensed under CC BY 4.0.
