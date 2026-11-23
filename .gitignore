@@ -92,4 +92,12 @@ target/
 .mypy_cache/
 
 # Local load-test reports (do not commit performance data)
-/performance/results/
+/deployment/performance/results/
+
+# Disaster-recovery archives and private encryption identities
+/job-market-off-vm-backups/
+*.age
+*.dump
+*.dump.gz
+*.tar.gz.age
+/deployment/dr/identity.txt

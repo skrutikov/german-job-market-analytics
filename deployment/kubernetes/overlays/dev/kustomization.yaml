@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: dev
+resources:
+  - ../../base
+  - ingress.yaml
+  - cadvisor-rbac.yaml
+# Keep common application configuration in ../../base; override only
+# environment-specific values in this overlay.
+configMapGenerator:
+  - name: job-market-settings
+    behavior: merge
+    literals:
+      - DEPLOYMENT_ENV=development
+images:
+  # CI advances dev to the newly published, security-scanned immutable release.
+  # Production uses a separate, approval-controlled Git branch.
+  - name: ghcr.io/skrutikov/german-job-market-analytics
+    newTag: sha-9fdc1e889f1e11bb524944bfb25c2b1f84d00030
+  - name: ghcr.io/skrutikov/german-job-market-analytics-airflow
+    newTag: sha-9fdc1e889f1e11bb524944bfb25c2b1f84d00030

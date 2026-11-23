@@ -22,5 +22,7 @@ venv
 *.tfstate
 *.tfstate.*
 **/.terraform
-performance/results
-security/results
+deployment/performance/results
+deployment/security/results
+
+deployment/
