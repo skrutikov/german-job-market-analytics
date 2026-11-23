@@ -14,6 +14,6 @@ configMapGenerator:
       - DEPLOYMENT_ENV=production
 images:
   - name: ghcr.io/skrutikov/german-job-market-analytics
-    newTag: sha-2b8f7d295af0340b0b920b6d2f7fb5fee5b836c8
+    newTag: sha-9fdc1e889f1e11bb524944bfb25c2b1f84d00030
   - name: ghcr.io/skrutikov/german-job-market-analytics-airflow
-    newTag: sha-2b8f7d295af0340b0b920b6d2f7fb5fee5b836c8
+    newTag: sha-9fdc1e889f1e11bb524944bfb25c2b1f84d00030
