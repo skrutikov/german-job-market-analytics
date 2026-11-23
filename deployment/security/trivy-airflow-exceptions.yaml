@@ -1,0 +1,19 @@
+# Airflow image ONLY; used by the blocking scan after verifying the final
+# image's installed package is >= 6.12.117-1 using dpkg-query.
+# Trivy v0.76.2 reports obsolete DHI base-layer metadata (6.12.115-2+dhi0)
+# even after apt installed 6.12.118-1+deb13u0+dhi0 (verified in CI on
+# 2026-11-23). Both CVEs have fixes by 6.12.117-1. The blocking scan
+# still checks every other CRITICAL vulnerability. SARIF remains unfiltered.
+# Do not use this exception for source, application, or other image scans.
+# Reinvestigate/remove once upstream Trivy/Airflow images are corrected.
+vulnerabilities:
+  - id: CVE-2026-99306
+    purls:
+      - "pkg:deb/debian/linux-libc-dev"
+    statement: "Scanner reports a stale base-layer version; CI verifies the final Airflow image contains linux-libc-dev >= 6.12.117-1 before running this scan."
+    expired_at: 2026-12-19
+  - id: CVE-2026-99362
+    purls:
+      - "pkg:deb/debian/linux-libc-dev"
+    statement: "Trivy reports 6.12.115-2+dhi0 from the base image despite the final Airflow image passing the dpkg check for linux-libc-dev >= 6.12.117-1."
+    expired_at: 2026-12-19

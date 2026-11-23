@@ -4,12 +4,16 @@ on:
   push:
     branches: [disaster-recovery]
     paths:
-      - "dr/**"
+      - "deployment/dr/**"
+      - "deployment/scripts/create_backup.sh"
+      - "deployment/scripts/restore_backup.sh"
       - ".github/workflows/disaster-recovery.yml"
   pull_request:
     branches: [main]
     paths:
-      - "dr/**"
+      - "deployment/dr/**"
+      - "deployment/scripts/create_backup.sh"
+      - "deployment/scripts/restore_backup.sh"
       - ".github/workflows/disaster-recovery.yml"
   workflow_dispatch:
 
@@ -19,30 +23,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Shell syntax
-        run: bash -n deploy.sh destroy.sh restore.sh dr/common.sh dr/backup.sh dr/restore.sh dr/maintenance.sh dr/verify_backup.sh dr/finalize_backup.sh dr/sanitize_overlay.sh dr/test_local_path.sh dr/test_verify_args.sh dr/test_restore_target.sh dr/test_restore_cli.sh dr/test_offline_finalize.sh
+        run: bash -n deployment/scripts/terraform_vm_workspace.sh deployment/scripts/deploy.sh deployment/scripts/destroy.sh deployment/scripts/restore_backup.sh deployment/dr/common.sh deployment/scripts/create_backup.sh deployment/dr/restore.sh deployment/dr/maintenance.sh deployment/dr/verify_backup.sh deployment/dr/finalize_backup.sh deployment/dr/sanitize_overlay.sh deployment/dr/test_local_path.sh deployment/dr/test_verify_args.sh deployment/dr/test_restore_target.sh deployment/dr/test_restore_cli.sh deployment/dr/test_offline_finalize.sh
       - name: Check validated k3s local-path PVC lookup
-        run: bash dr/test_local_path.sh
+        run: bash deployment/dr/test_local_path.sh
       - name: Test backup verifier arguments
-        run: bash dr/test_verify_args.sh
+        run: bash deployment/dr/test_verify_args.sh
       - name: Test restore destination identity safety guard
-        run: bash dr/test_restore_target.sh
+        run: bash deployment/dr/test_restore_target.sh
       - name: Test automated backup metadata recording
-        run: python3 -m unittest discover -s dr -p 'test_*.py' -v
+        run: python3 -m unittest discover -s deployment/dr -p 'test_*.py' -v
       - name: Check root restore CLI refuses wrong Terraform state and node
-        run: bash dr/test_restore_cli.sh
+        run: bash deployment/dr/test_restore_cli.sh
       - name: Validate DR root CLI safety guards
         run: |
-          if bash restore.sh 100 >/tmp/dr-guard.txt 2>&1; then
+          if bash deployment/scripts/restore_backup.sh 100 >/tmp/dr-guard.txt 2>&1; then
             echo "VM 100 must never be a DR target" >&2
             exit 1
           fi
           grep -F "Refusing recovery into VM 100" /tmp/dr-guard.txt
-          if bash deploy.sh not-a-vm >/dev/null 2>&1; then
-            echo "deploy.sh accepted an invalid VM ID" >&2
+          if bash deployment/scripts/deploy.sh not-a-vm 25 >/dev/null 2>&1; then
+            echo "deployment/scripts/deploy.sh accepted an invalid VM ID" >&2
             exit 1
           fi
-          if bash destroy.sh not-a-vm >/dev/null 2>&1; then
-            echo "destroy.sh accepted an invalid VM ID" >&2
+          if bash deployment/scripts/destroy.sh not-a-vm >/dev/null 2>&1; then
+            echo "deployment/scripts/destroy.sh accepted an invalid VM ID" >&2
             exit 1
           fi
       - uses: azure/setup-kubectl@v4
@@ -52,12 +56,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m pip install PyYAML==6.0.2
-          mkdir -p /tmp/job-market-dr-render
-          cp -R kubernetes /tmp/job-market-dr-render/
-          overlay=/tmp/job-market-dr-render/kubernetes/overlays/prod/kustomization.yaml
+          mkdir -p /tmp/job-market-dr-render/deployment
+          cp -R deployment/kubernetes /tmp/job-market-dr-render/deployment/
+          overlay=/tmp/job-market-dr-render/deployment/kubernetes/overlays/prod/kustomization.yaml
           tag="$(awk '/newTag: sha-/ { print $2; exit }' "$overlay")"
-          bash dr/sanitize_overlay.sh "$overlay" "$tag"
-          kubectl kustomize /tmp/job-market-dr-render/kubernetes/overlays/prod > /tmp/dr-recovered.yaml
+          bash deployment/dr/sanitize_overlay.sh "$overlay" "$tag"
+          kubectl kustomize /tmp/job-market-dr-render/deployment/kubernetes/overlays/prod > /tmp/dr-recovered.yaml
           python3 - <<'PY'
           import yaml
           from pathlib import Path
@@ -119,4 +123,4 @@ jobs:
           docker exec dr-test-large pg_dump -U job_market -d job_market -Fc \
             --no-owner --no-privileges > /tmp/dr-large.dump
           test "$(stat -c %s /tmp/dr-large.dump)" -gt 1048576
-          bash dr/test_offline_finalize.sh /tmp/dr-large.dump
+          bash deployment/dr/test_offline_finalize.sh /tmp/dr-large.dump
