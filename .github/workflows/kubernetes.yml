@@ -60,10 +60,10 @@ jobs:
       - name: Validate Prometheus and Alertmanager rules
         run: |
           docker run --rm --entrypoint /bin/promtool \
-            -v "$PWD/kubernetes:/work:ro" prom/prometheus:v3.6.0 \
+            -v "$PWD/deployment/kubernetes:/work:ro" prom/prometheus:v3.6.0 \
             check rules /work/base/config/alerts.yml
           docker run --rm --entrypoint /bin/promtool \
-            -v "$PWD/kubernetes:/work:ro" -w /work/tests prom/prometheus:v3.6.0 \
+            -v "$PWD/deployment/kubernetes:/work:ro" -w /work/tests prom/prometheus:v3.6.0 \
             test rules slo-alerts.test.yml
           docker run --rm --entrypoint /bin/amtool \
             -v "$PWD/deployment/kubernetes/base/config:/config:ro" prom/alertmanager:v0.28.1 \
