@@ -157,7 +157,8 @@ jobs:
           ignore-unfixed: true
           format: table
           # Only the Airflow gate has a documented, expiring exception for
-          # CVE-2026-99306, *after* dpkg confirms the patched package version.
+          # CVE-2026-99306 and CVE-2026-99362, *after* dpkg verifies that
+          # the final image contains a patched linux-libc-dev version.
           # The SARIF report stays unfiltered so findings remain visible.
           trivyignores: ${{ matrix.component == 'airflow' && 'deployment/security/trivy-airflow-exceptions.yaml' || '' }}
           exit-code: "1"
