@@ -81,14 +81,17 @@ def validate() -> None:
     exceptions = yaml.safe_load(
         Path("deployment/security/trivy-airflow-exceptions.yaml").read_text()
     )
-    assert exceptions["vulnerabilities"] == [
-        {
-            "id": "CVE-2026-99306",
-            "purls": ["pkg:deb/debian/linux-libc-dev"],
-            "statement": exceptions["vulnerabilities"][0]["statement"],
-            "expired_at": __import__("datetime").date(2026, 12, 19),
-        }
-    ]
+    # Only these two specific stale-base-layer findings are permitted.
+    # The final image's patched version is checked separately above.
+    expected_ids = {"CVE-2026-99306", "CVE-2026-99362"}
+    entries = exceptions["vulnerabilities"]
+    assert len(entries) == len(expected_ids)
+    assert {entry["id"] for entry in entries} == expected_ids
+    for entry in entries:
+        assert set(entry) == {"id", "purls", "statement", "expired_at"}
+        assert entry["purls"] == ["pkg:deb/debian/linux-libc-dev"]
+        assert entry["statement"].strip()
+        assert entry["expired_at"] == __import__("datetime").date(2026, 12, 19)
     assert ".git" in Path(".dockerignore").read_text()
 
     pipeline = yaml.load(
