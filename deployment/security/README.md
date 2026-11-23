@@ -46,7 +46,7 @@ credentials in source-controlled files or image build arguments.
 - Manually through **GitHub → Actions → Trivy security scanning → Run workflow**
 
 The workflow uses `aquasecurity/trivy-action@v0.36.0` and explicitly pins
-Trivy to `v0.74.0`. Trivy's vulnerability database is fetched/cached by the
+Trivy to `v0.76.2`. Trivy's vulnerability database is fetched/cached by the
 action and may change between runs.
 
 **Policy (same for source and images):**
@@ -63,10 +63,17 @@ action and may change between runs.
 - A scanner crash/download failure also fails its job. Reports are uploaded
   **before** the enforcing gate, so failures can be investigated afterward.
 
-We do not ship a blanket `.trivyignore`. If a justified exception becomes
-necessary, document the advisory ID, affected component, rationale and expiry
-date before suppressing it. A green scan is **not** proof that the system is
-secure; Trivy only knows published issues and supported checks.
+We do not ship a blanket `.trivyignore`. Two narrowly scoped, expiring entries
+(`CVE-2026-99306` and `CVE-2026-99362`) apply **only** to the blocking Airflow
+image scan. Trivy reports the old `linux-libc-dev` version `6.12.115-2+dhi0`
+from its DHI base-layer metadata, whereas CI independently verified
+`6.12.118-1+deb13u0+dhi0` in the final image using `dpkg-query`; this is
+newer than the minimum fixed version `6.12.117-1`. The final-version check
+must pass *before* any exception is applied. The SARIF report is unfiltered,
+and all other fixable critical vulnerabilities remain blocking. Reassess or
+remove these exceptions before their expiry on **2026-12-19**.
+A green scan is **not** proof that the system is secure; Trivy only knows
+published issues and supported checks.
 
 For pull requests from **forks**, GitHub may restrict SARIF uploads due to the
 token permission model. The workflow still scans and saves report artifacts;
