@@ -30,7 +30,7 @@ jobs:
           persist-credentials: false
 
       - name: Scan repository (SARIF report)
-        uses: aquadeployment/security/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           version: v0.76.2
           scan-type: fs
@@ -59,7 +59,7 @@ jobs:
 
       # Keep the report even when the policy step blocks this change.
       - name: Fail on fixable critical risks or detected critical secrets
-        uses: aquadeployment/security/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           version: v0.76.2
           scan-type: fs
@@ -118,7 +118,7 @@ jobs:
             -c "from airflow.sdk import dag, task; import job_market; print('Airflow imports OK')"
 
       - name: Scan container (SARIF report)
-        uses: aquadeployment/security/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           version: v0.76.2
           scan-type: image
@@ -147,7 +147,7 @@ jobs:
           retention-days: 14
 
       - name: Block fixable critical container vulnerabilities
-        uses: aquadeployment/security/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           version: v0.76.2
           scan-type: image
