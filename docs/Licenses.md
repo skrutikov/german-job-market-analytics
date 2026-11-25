@@ -32,5 +32,4 @@
 - https://github.com/argoproj/argo-cd/blob/master/ui/src/assets/images/argo.png
 - https://uxwing.com/notification-alarm-buzzer-icon/
 - https://www.svgrepo.com/vectors/pull-request/
-
-Kubernetes PVC icon — Kubernetes Community Icons, licensed under CC BY 4.0.
+- https://uxwing.com/tick-mark-icon/
